@@ -188,6 +188,23 @@
             style MPMList fill:#fff3e0,stroke:#f57c00
         </div>
         <div class="diagram-caption" style="margin-bottom: 0;">图 4：MPM 算法的空间依赖推导模型</div>
+        <div style="margin-top: 20px; background-color: #282c34; padding: 15px; border-radius: 8px; color: #abb2bf; font-family: 'Consolas', monospace; font-size: 0.9em; overflow-x: auto;">
+            <div style="color: #61afef; margin-bottom: 10px;">// MPM Pseudocode (Algorithm Logic)</div>
+            <code>
+            <span style="color: #c678dd;">function</span> <span style="color: #61afef;">derive_mpm_list</span>(left_block, top_block) {<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;mpm_list = [];<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;left_mode = left_block.<span style="color: #e06c75;">get_intra_mode</span>(); <span style="color: #5c6370;">// 强依赖：必须等左侧决出最终模式</span><br>
+            &nbsp;&nbsp;&nbsp;&nbsp;top_mode = top_block.<span style="color: #e06c75;">get_intra_mode</span>();  <span style="color: #5c6370;">// 强依赖：必须等上方决出最终模式</span><br>
+            <br>
+            &nbsp;&nbsp;&nbsp;&nbsp;<span style="color: #c678dd;">if</span> (left_mode == top_mode) {<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;mpm_list.<span style="color: #e06c75;">push</span>(left_mode, PLANAR, DC);<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;} <span style="color: #c678dd;">else</span> {<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;mpm_list.<span style="color: #e06c75;">push</span>(left_mode, top_mode, PLANAR);<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;}<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;<span style="color: #c678dd;">return</span> mpm_list;<br>
+            }
+            </code>
+        </div>
     </div>
     <p><strong>硬件流水线瓶颈：</strong> 为了生成当前块的 MPM 列表，它必须<strong>死等</strong>左方和上方块彻底做完 RDO 并决出最终模式。在硬件上，这意味着相邻块之间存在强烈的模式层面的数据依赖，导致极长的等待时间和流水线气泡。</p>
     <div class="success">
@@ -214,6 +231,22 @@
             style ChromaPred fill:#fff3e0,stroke:#f57c00
         </div>
         <div class="diagram-caption" style="margin-bottom: 0;">图 5：CCLM 算法的跨分量预测模型</div>
+        <div style="margin-top: 20px; background-color: #282c34; padding: 15px; border-radius: 8px; color: #abb2bf; font-family: 'Consolas', monospace; font-size: 0.9em; overflow-x: auto;">
+            <div style="color: #61afef; margin-bottom: 10px;">// CCLM Pseudocode (Algorithm Logic)</div>
+            <code>
+            <span style="color: #c678dd;">function</span> <span style="color: #61afef;">cclm_predict</span>(current_luma_recon, neighbor_luma, neighbor_chroma) {<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;<span style="color: #5c6370;">// 1. 根据相邻块重建像素计算线性参数</span><br>
+            &nbsp;&nbsp;&nbsp;&nbsp;(alpha, beta) = <span style="color: #e06c75;">derive_linear_model</span>(neighbor_luma, neighbor_chroma);<br>
+            <br>
+            &nbsp;&nbsp;&nbsp;&nbsp;<span style="color: #5c6370;">// 2. 强依赖：必须等待当前块 Luma 走完 RDO 得到 Recon</span><br>
+            &nbsp;&nbsp;&nbsp;&nbsp;luma_downsampled = <span style="color: #e06c75;">downsample</span>(current_luma_recon);<br>
+            <br>
+            &nbsp;&nbsp;&nbsp;&nbsp;<span style="color: #5c6370;">// 3. 执行跨分量线性预测</span><br>
+            &nbsp;&nbsp;&nbsp;&nbsp;chroma_pred = alpha * luma_downsampled + beta;<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;<span style="color: #c678dd;">return</span> chroma_pred;<br>
+            }
+            </code>
+        </div>
     </div>
     <p><strong>硬件流水线瓶颈：</strong> VVC 的 CCLM (跨分量线性模型) 要求色度的预测像素直接通过公式从亮度的重建像素 (Recon) 算出来。色度必须等亮度走完 T/Q/IQ/IT 拿到真实 Recon 后才能开始 Pred，极其阻塞流水线。</p>
     <div class="success">
@@ -242,6 +275,23 @@
             style Sub3 fill:#fff3e0,stroke:#f57c00
         </div>
         <div class="diagram-caption" style="margin-bottom: 0;">图 6：ISP 算法内部的首尾串行依赖模型</div>
+        <div style="margin-top: 20px; background-color: #282c34; padding: 15px; border-radius: 8px; color: #abb2bf; font-family: 'Consolas', monospace; font-size: 0.9em; overflow-x: auto;">
+            <div style="color: #61afef; margin-bottom: 10px;">// ISP Pseudocode (Algorithm Logic)</div>
+            <code>
+            <span style="color: #c678dd;">function</span> <span style="color: #61afef;">isp_process_cu</span>(cu_block, num_subpartitions) {<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;reference_pixels = cu_block.<span style="color: #e06c75;">get_external_neighbors</span>();<br>
+            <br>
+            &nbsp;&nbsp;&nbsp;&nbsp;<span style="color: #c678dd;">for</span> (i = 0; i < num_subpartitions; i++) {<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color: #5c6370;">// 强串行：下一个子块的预测必须等待当前子块完全 Recon</span><br>
+            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;sub_pred = <span style="color: #e06c75;">intra_predict</span>(cu_block.sub[i], reference_pixels);<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;sub_recon = <span style="color: #e06c75;">rdo_and_reconstruct</span>(sub_pred);<br>
+            <br>
+            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color: #5c6370;">// 致命依赖：当前子块的 Recon 会立刻变为下个子块的参考像素</span><br>
+            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;reference_pixels = <span style="color: #e06c75;">update_neighbors_with</span>(sub_recon);<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;}<br>
+            }
+            </code>
+        </div>
     </div>
     <p><strong>硬件流水线瓶颈：</strong> 连续的一堆 4x4 小块会导致极高频的串行反馈；而 VVC 的 ISP (帧内子划分) 会在一个 CU 内部再切分且首尾串行依赖，导致流水线深度崩溃。</p>
     <div class="success">
@@ -269,6 +319,21 @@
             style Pred fill:#fff3e0,stroke:#f57c00
         </div>
         <div class="diagram-caption" style="margin-bottom: 0;">图 7：MRL 算法的多参考行提取模型</div>
+        <div style="margin-top: 20px; background-color: #282c34; padding: 15px; border-radius: 8px; color: #abb2bf; font-family: 'Consolas', monospace; font-size: 0.9em; overflow-x: auto;">
+            <div style="color: #61afef; margin-bottom: 10px;">// MRL Pseudocode (Algorithm Logic)</div>
+            <code>
+            <span style="color: #c678dd;">function</span> <span style="color: #61afef;">mrl_predict</span>(current_block, mrl_idx, angle_mode) {<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;ref_pixels = [];<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;<span style="color: #5c6370;">// 内存带宽暴增：需要从 SRAM 取出更外围的整行/整列像素</span><br>
+            &nbsp;&nbsp;&nbsp;&nbsp;<span style="color: #c678dd;">if</span> (mrl_idx == 0) ref_pixels = <span style="color: #e06c75;">fetch_sram_line</span>(offset = 1);<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;<span style="color: #c678dd;">else if</span> (mrl_idx == 1) ref_pixels = <span style="color: #e06c75;">fetch_sram_line</span>(offset = 2);<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;<span style="color: #c678dd;">else if</span> (mrl_idx == 2) ref_pixels = <span style="color: #e06c75;">fetch_sram_line</span>(offset = 3);<br>
+            <br>
+            &nbsp;&nbsp;&nbsp;&nbsp;pred_block = <span style="color: #e06c75;">angular_projection</span>(current_block, ref_pixels, angle_mode);<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;<span style="color: #c678dd;">return</span> pred_block;<br>
+            }
+            </code>
+        </div>
     </div>
     <p><strong>硬件流水线瓶颈：</strong> 常规 Intra 只取外圈 1 行 1 列像素，但 VVC 的 MRL 允许使用外圈 3 行内的重建像素，导致 SRAM 读带宽需求成倍暴增，且连线极其复杂。</p>
     <div class="success">
