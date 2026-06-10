@@ -79,6 +79,15 @@
             padding: 20px;
             border: 1px solid #eee;
             border-radius: 8px;
+            overflow-x: auto;
+        }
+        .mermaid-stretch {
+            width: 100%;
+        }
+        .mermaid-stretch svg {
+            width: 100% !important; 
+            height: auto !important;
+            max-width: none !important;
         }
         .diagram-caption {
             text-align: center;
@@ -425,7 +434,8 @@
         因为我们不能只看预测出来的像素好不好，我们还必须考虑“要把这些残差和模式信息写入码流，需要消耗多少比特 (Rate)”，以及“经过量化和反量化这种有损压缩后，最终用户看到的画面失真到底有多大 (Distortion)”。这就需要完整地模拟一遍编码和解码的过程。
     </div>
 
-    <div class="mermaid">
+    <div class="mermaid mermaid-stretch">
+    %%{init: {'theme': 'default', 'themeVariables': {'fontSize': '24px'}, 'flowchart': {'nodeSpacing': 30, 'rankSpacing': 50, 'curve': 'bumpX'}}}%%
     flowchart LR
         subgraph Loop ["IPD 与 RDO 核心计算环路"]
             direction LR
