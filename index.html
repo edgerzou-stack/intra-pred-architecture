@@ -239,35 +239,59 @@
         <strong>Drift-Free 保障：</strong> 尽管在 MD 阶段编码器“作弊”使用了无损的原始像素，但这只是为了筛选模式。在决定最终码流内容的 RDO 阶段，编码器被强制要求使用与解码端完全相同的重建像素，确保绝对一致性。
     </div>
 
-    <div class="mermaid">
-    flowchart LR
-        subgraph S1 ["理论全串行 (极慢)"]
-            direction TD
-            A1["CU 0 编码重建"] --> B1["CU 1 编码重建"] --> C1["CU 2 编码重建"]
-        end
+    
+    <!-- 纯 HTML/CSS 原生渲染架构对比图，彻底告别 Mermaid 语法解析错误 -->
+    <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 30px; margin: 30px 0; box-shadow: 0 4px 6px rgba(0,0,0,0.02);">
+        
+        <!-- 理论全串行 -->
+        <div style="margin-bottom: 40px;">
+            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
+                <span style="display: inline-block; width: 12px; height: 12px; background: #ef4444; border-radius: 50%;"></span>
+                <span style="font-size: 15px; font-weight: 700; color: #334155;">理论全串行 (极慢)</span>
+            </div>
+            
+            <!-- Timeline Container -->
+            <div style="position: relative; display: flex; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; height: 50px; overflow: hidden;">
+                <div style="width: 33.33%; background: #fee2e2; border-right: 2px solid #fff; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600; color: #991b1b; transition: all 0.3s; cursor: pointer;" onmouseover="this.style.opacity=0.8" onmouseout="this.style.opacity=1">CU 0 (粗选 + 真实重建)</div>
+                <div style="width: 33.33%; background: #ffedd5; border-right: 2px solid #fff; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600; color: #9a3412; transition: all 0.3s; cursor: pointer;" onmouseover="this.style.opacity=0.8" onmouseout="this.style.opacity=1">CU 1 (粗选 + 真实重建)</div>
+                <div style="width: 33.33%; background: #fef9c3; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600; color: #854d0e; transition: all 0.3s; cursor: pointer;" onmouseover="this.style.opacity=0.8" onmouseout="this.style.opacity=1">CU 2 (粗选 + 真实重建)</div>
+            </div>
+        </div>
 
-        subgraph S2 ["实际硬件模型 (MD并发与RDO串行)"]
-            direction TD
-            O["原图同时输入"]
-            M0["CU 0 RMD 粗选"]
-            M1["CU 1 RMD 粗选"]
-            M2["CU 2 RMD 粗选"]
-            R0["CU 0 真实 RDO 重建"]
-            R1["CU 1 真实 RDO 重建"]
-            R2["CU 2 真实 RDO 重建"]
+        <!-- 实际硬件解耦模型 -->
+        <div>
+            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
+                <span style="display: inline-block; width: 12px; height: 12px; background: #10b981; border-radius: 50%;"></span>
+                <span style="font-size: 15px; font-weight: 700; color: #334155;">实际硬件模型 (高并发模式粗选 + RDO 重建流水线解耦)</span>
+            </div>
             
-            O --> M0
-            O --> M1
-            O --> M2
-            
-            M0 -.-> R0
-            M1 -.-> R1
-            M2 -.-> R2
-            
-            R0 --> R1
-            R1 --> R2
-        end
+            <div style="position: relative; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; padding: 20px;">
+                <!-- 阶段 1: 兵分多路的并发 MD -->
+                <div style="display: flex; gap: 10px; width: 40%; margin-bottom: 15px;">
+                    <div style="flex: 1; height: 45px; background: #e0f2fe; border: 1px solid #bae6fd; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; color: #0369a1; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">CU 0 粗选</div>
+                    <div style="flex: 1; height: 45px; background: #e0f2fe; border: 1px solid #bae6fd; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; color: #0369a1; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">CU 1 粗选</div>
+                    <div style="flex: 1; height: 45px; background: #e0f2fe; border: 1px solid #bae6fd; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; color: #0369a1; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">CU 2 粗选</div>
+                </div>
+                
+                <!-- 连接提示 -->
+                <div style="display: flex; justify-content: center; width: 100%; margin-bottom: 15px;">
+                    <div style="background: #f1f5f9; padding: 6px 16px; border-radius: 20px; font-size: 12px; color: #475569; font-weight: 500; border: 1px solid #e2e8f0;">
+                        ⬇️ 仅输出 Top-N 候选喂给后级，前级立即释放 ⬇️
+                    </div>
+                </div>
+                
+                <!-- 阶段 2: 严格依赖重建像素的串行 RDO -->
+                <div style="display: flex; width: 100%; justify-content: flex-end;">
+                    <div style="display: flex; width: 60%; border-radius: 6px; overflow: hidden; height: 45px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                        <div style="flex: 1; background: #dcfce7; border-right: 2px solid #fff; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; color: #166534;">CU 0 真实 RDO</div>
+                        <div style="flex: 1; background: #bbf7d0; border-right: 2px solid #fff; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; color: #166534;">CU 1 真实 RDO</div>
+                        <div style="flex: 1; background: #86efac; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; color: #166534;">CU 2 真实 RDO</div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
+    
     <div class="diagram-caption">图 3：理论全串行与实际 MD/RDO 硬件解耦流水线对比</div>
 
     
