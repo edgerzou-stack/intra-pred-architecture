@@ -7,15 +7,15 @@ os.chdir(script_dir)
 
 # Create the top-level directed graph
 dot = graphviz.Digraph(comment='IPD 与 RDO 核心计算环路', format='svg', engine='dot')
-dot.attr(rankdir='LR', splines='spline', nodesep='0.6', ranksep='0.8', pad='0.5', fontname='Helvetica, Arial, sans-serif')
+dot.attr(rankdir='LR', splines='spline', nodesep='1.0', ranksep='1.5', pad='0.5', fontname='Helvetica, Arial, sans-serif')
 
 # Create the subgraph
 with dot.subgraph(name='cluster_Loop') as c:
-    c.attr(label='IPD 与 RDO 核心计算环路', style='filled, rounded', fillcolor='#ffffe0', color='#fbc02d', penwidth='2', fontname='Helvetica, Arial, sans-serif', fontsize='20', margin='20')
+    c.attr(label='IPD 与 RDO 核心计算环路', style='filled, rounded', fillcolor='#ffffe0', color='#fbc02d', penwidth='2', fontname='Helvetica, Arial, sans-serif', fontsize='40', margin='30')
     
     # Global node style
-    c.attr('node', shape='box', style='filled, rounded', fillcolor='#f3e5f5', color='#ab47bc', fontname='Helvetica, Arial, sans-serif', fontsize='16', margin='0.2,0.1')
-    c.attr('edge', color='#555555', fontname='Helvetica, Arial, sans-serif', fontsize='14', penwidth='1.5')
+    c.attr('node', shape='box', style='filled, rounded', fillcolor='#f3e5f5', color='#ab47bc', fontname='Helvetica, Arial, sans-serif', fontsize='30', margin='0.3,0.2')
+    c.attr('edge', color='#555555', fontname='Helvetica, Arial, sans-serif', fontsize='26', penwidth='2.0')
     
     # Define nodes
     c.node('Mode', '候选模式')
