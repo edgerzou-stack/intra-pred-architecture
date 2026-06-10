@@ -85,7 +85,10 @@
 <div class="container">
     <h1>VideoEncoder_Project 帧内预测与模式决策机制总结<br><span style="font-size:0.6em; color:#7f8c8d;">Intra Prediction Architecture & Hardware Bottlenecks</span></h1>
 
-    <h2>1. 帧内预测中亮度 (Luma) 与色度 (Chroma) 的决策顺序与优化</h2>
+    <h2>1. 帧内预测的高阶架构瓶颈与 C-Model 应对策略</h2>
+    <p>针对业界 Intra Prediction 极其头疼的架构瓶颈，我们目前的 C-Model 进行了一系列的巧妙化解或规避。本章将详细解析这些痛点及我们的解决方案。</p>
+    
+    <h3>1.1 亮度 (Luma) 与色度 (Chroma) 的并行决策优化</h3>
     <p>在标准视频编码中，色度预测经常需要复用亮度的最佳预测方向（如 DM 模式/Chroma from Luma）。理论上，这意味着色度必须死等亮度算完才能开工。但在我们的 <strong>C-Model (以及对应的实际硬件) 中做了深度的并行优化</strong>：将色度的候选模式拆分为“独立模式”(如 Planar, DC, 水平, 垂直) 和“依赖模式”(DM)。独立模式会与 Luma 决策流<strong>完全并行</strong>计算 Cost，隐藏了大量延迟；只有 DM 模式需要短暂等待 Luma 输出 Best Mode 后再做计算和最终比对。</p>
     
     <div class="mermaid">
@@ -160,9 +163,9 @@
             O --> M1["CU 1 RMD 粗选"]
             O --> M2["CU 2 RMD 粗选"]
             
-            M0 -.->|"Top-N 候选"| R0["CU 0 真实 RDO 重建"]
-            M1 -.->|"Top-N 候选"| R1["CU 1 真实 RDO 重建"]
-            M2 -.->|"Top-N 候选"| R2["CU 2 真实 RDO 重建"]
+            M0 -. "Top-N 候选" .-> R0["CU 0 真实 RDO 重建"]
+            M1 -. "Top-N 候选" .-> R1["CU 1 真实 RDO 重建"]
+            M2 -. "Top-N 候选" .-> R2["CU 2 真实 RDO 重建"]
             
             R0 -->|"提供 Recon"| R1
             R1 -->|"提供 Recon"| R2
@@ -172,12 +175,7 @@
 
     <hr style="margin: 50px 0; border: 1px solid #e0e0e0;">
 
-    <div class="highlight" style="margin-top: 50px; background-color: var(--secondary); color: white;">
-        <h2 style="color: white; border-left: none; padding-left: 0; margin-top: 0;">高阶架构痛点与我们的 C-Model 应对策略</h2>
-        <p>除了上述基础的像素级流水线设计，针对业界 Intra Prediction 极其头疼的四大架构瓶颈，我们目前的 C-Model 是这样巧妙化解或规避的：</p>
-    </div>
-
-    <h2>4. 痛点解析一：MPM 的强依赖流水线气泡</h2>
+    <h3>1.2 痛点解析一：MPM 的强依赖流水线气泡</h3>
     <div class="highlight" style="background-color: #e3f2fd; border-left-color: #1976d2;">
         <strong>💡 什么是 MPM (Most Probable Mode) 算法？</strong><br>
         MPM 是一种利用空间相邻性来压缩模式编码比特数的算法。核心思想是：当前块的纹理方向极有可能与它左侧和上方的相邻块保持一致。因此，编码器会根据左块和上块的最终预测模式，推导出一个“最可能模式列表”。如果当前块最优模式在这个列表中，只需极少比特即可编码。
@@ -245,7 +243,7 @@
     </div>
     <hr style="margin: 40px 0; border-top: 1px dashed #ccc;">
 
-    <h2>5. 痛点解析二：CCLM 引发的最长色度挂起 (C-Model 未引入)</h2>
+    <h3>1.3 痛点解析二：CCLM 引发的最长色度挂起 (C-Model 未引入)</h3>
     <div class="highlight" style="background-color: #e3f2fd; border-left-color: #1976d2;">
         <strong>💡 什么是 CCLM (跨分量线性模型) 算法？</strong><br>
         CCLM 是一种利用亮度 (Luma) 像素来预测色度 (Chroma) 像素的算法。它假设亮度和色度在同一个块内存在线性关系 (Chroma = α × Luma + β)。编码器通过对相邻的亮度重建像素和色度重建像素进行下采样和线性拟合，计算出参数 α 和 β，然后直接代入当前块的亮度重建像素求出色度预测值。
@@ -280,7 +278,7 @@
     </div>
     <hr style="margin: 40px 0; border-top: 1px dashed #ccc;">
 
-    <h2>6. 痛点解析三：极小尺寸块的密集反馈噩梦 (ISP 已被 C-Model 舍弃)</h2>
+    <h3>1.4 痛点解析三：极小尺寸块的密集反馈噩梦 (ISP 已被 C-Model 舍弃)</h3>
     <div class="highlight" style="background-color: #e3f2fd; border-left-color: #1976d2;">
         <strong>💡 什么是 ISP (Intra Sub-Partitions) 算法？</strong><br>
         ISP 允许将一个常规的亮度预测块 (如 8x8) 沿水平或垂直方向强制切分为多个子块 (如四个 8x2 或 2x8)。最致命的是，这些子块在 CU 内部必须进行首尾相接的串行预测和重建：前一个子块的重建像素，必须立刻作为下一个子块的参考像素。
@@ -321,7 +319,7 @@
     </div>
     <hr style="margin: 40px 0; border-top: 1px dashed #ccc;">
 
-    <h2>7. 痛点解析四：多参考行 (MRL) 引发的 SRAM 带宽剧增 (C-Model 已禁用)</h2>
+    <h3>1.5 痛点解析四：多参考行 (MRL) 引发的 SRAM 带宽剧增 (C-Model 已禁用)</h3>
     <div class="highlight" style="background-color: #e3f2fd; border-left-color: #1976d2;">
         <strong>💡 什么是 MRL (Multiple Reference Line) 算法？</strong><br>
         传统的帧内预测只允许使用紧挨着当前块最外面的一行/一列相邻像素作为参考。而 MRL 算法打破了这个限制，允许预测器跳过第一行，去拾取外围第 2 行或第 3 行的重建像素进行方向投影预测，以此来捕捉更远距离的纹理趋势。
@@ -353,8 +351,62 @@
     <div class="success">
         <strong>我们的 C-Model 做法 (克制引入)：</strong><br>
         基于 PPA（面积与功耗）的极致权衡，当前的 C-Model 并未开启或引入 MRL。SRAM 只需要老老实实地缓存紧贴着边界的一行一列像素。这保证了线管系统（Line Buffer）的极简设计和可预测的超低内存带宽。
+    <hr style="margin: 50px 0; border: 1px solid #e0e0e0;">
+
+    <h2>4. IPD 与 RDO 的核心计算环路 (Calculation Loop)</h2>
+    <p>在硬件视频编码器中，候选模式的精细评估并非一蹴而就，而是需要在一个紧密耦合的反馈环路中运行。这个环路由 <strong>IPD (Intra Prediction Datapath / 帧内预测数据通路)</strong> 与 <strong>RDO (Rate-Distortion Optimization / 率失真优化)</strong> 模块共同构成。</p>
+    
+    <div class="highlight" style="background-color: #f3e5f5; border-left-color: var(--primary);">
+        <strong>💡 为什么需要这个环路？</strong><br>
+        因为我们不能只看预测出来的像素好不好，我们还必须考虑“要把这些残差和模式信息写入码流，需要消耗多少比特 (Rate)”，以及“经过量化和反量化这种有损压缩后，最终用户看到的画面失真到底有多大 (Distortion)”。这就需要完整地模拟一遍编码和解码的过程。
     </div>
 
+    <div class="mermaid">
+    flowchart LR
+        subgraph Loop ["IPD 与 RDO 核心计算环路"]
+            direction LR
+            Mode["候选模式"] --> IPD["1. IPD 生成预测块"]
+            Orig["原始像素"] --> Sub{"相减"}
+            IPD --> Sub
+            Sub --> TQ["2. 变换与量化 (T/Q)"]
+            
+            TQ -.-> Rate["3. 预估比特率 R"]
+            TQ --> IQIT["4. 反量化与反变换 (IQ/IT)"]
+            
+            IQIT --> Add{"相加"}
+            IPD -.-> Add
+            Add --> Recon["5. 生成重建块 (Recon)"]
+            
+            Recon --> Dist["6. 计算失真 D<br>(SAD/SSE)"]
+            Orig -.-> Dist
+            
+            Rate --> Cost{"7. 计算 RD Cost<br>J = D + λR"}
+            Dist --> Cost
+        end
+        
+        style IPD fill:#e1f5fe,stroke:#0288d1
+        style TQ fill:#fff3e0,stroke:#f57c00
+        style IQIT fill:#fff3e0,stroke:#f57c00
+        style Recon fill:#e8f5e9,stroke:#2e7d32
+        style Cost fill:#fce4ec,stroke:#c2185b
+    </div>
+    <div class="diagram-caption">图 8：IPD 与 RDO 的完整率失真反馈计算环路</div>
+    
+    <div style="margin-top: 20px; background-color: #f8f9fa; padding: 15px; border-left: 4px solid var(--primary); border-radius: 4px; color: #333; font-size: 0.95em;">
+        <strong style="color: var(--primary); display: block; margin-bottom: 10px;">📝 中文算法推导步骤 (IPD & RDO 环路运转)</strong>
+        <ol style="margin: 0; padding-left: 20px;">
+            <li style="margin-bottom: 5px;"><strong>预测生成 (IPD)：</strong>根据当前测试的 Intra 模式和周围已重建的参考像素，进行空间投影，生成当前块的预测像素 (Predictor)。</li>
+            <li style="margin-bottom: 5px;"><strong>求残差与 T/Q：</strong>将原始像素减去预测像素得到残差，送入二维 DCT 变换矩阵 (T) 和量化器 (Q)，得到离散的量化系数。</li>
+            <li style="margin-bottom: 5px;"><strong>分流评估：</strong>
+                <ul style="margin: 5px 0 0 0; padding-left: 20px; list-style-type: circle;">
+                    <li style="margin-bottom: 5px;"><strong>分支一 (Rate)：</strong>量化系数送入熵编码器 (CABAC) 模型，预估消耗的比特数 R。</li>
+                    <li><strong>分支二 (Recon)：</strong>量化系数立刻进行反量化 (IQ) 和反变换 (IT)，将有损残差加回预测像素，得到真正解码端可见的“重建像素 (Recon)”。</li>
+                </ul>
+            </li>
+            <li style="margin-bottom: 5px;"><strong>失真计算：</strong>将“重建像素”与“原始像素”求差平方和 (SSE) 或绝对误差和 (SAD)，得到失真度 D。</li>
+            <li><strong>最终决策：</strong>通过拉格朗日乘子公式 <code>Cost = D + λ * R</code> 计算出该模式的最终代价。循环测试多个模式后，Cost 最小的胜出！</li>
+        </ol>
+    </div>
 </div>
 
 </body>
