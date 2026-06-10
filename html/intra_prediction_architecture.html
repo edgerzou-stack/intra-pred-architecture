@@ -145,12 +145,12 @@
 
     <div class="mermaid">
     flowchart LR
-        subgraph S1 [理论全串行 - 极慢]
+        subgraph S1 ["理论全串行 - 极慢"]
             direction TD
             A1["CU 0 编码重建"] --> B1["CU 1 编码重建"] --> C1["CU 2 编码重建"]
         end
 
-        subgraph S2 [实际硬件模型 - MD并发 / RDO串行]
+        subgraph S2 ["实际硬件模型 - MD并发 / RDO串行"]
             direction TD
             O["原图同时输入"] --> M0["CU 0 RMD 粗选"]
             O --> M1["CU 1 RMD 粗选"]
