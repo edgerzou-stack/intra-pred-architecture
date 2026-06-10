@@ -109,9 +109,7 @@
             F2 --> G
             G --> H["确定 Best Chroma Mode"]
         end
-        
-        D -.->|"透传 Best Luma Mode"| E2
-        
+        Row1 -. "透传 Best Luma Mode (仅 DM Mode 需等待)" .-> Row2
         style B fill:#e1f5fe,stroke:#0288d1
         style C fill:#e1f5fe,stroke:#0288d1
         style D fill:#e1f5fe,stroke:#0288d1
