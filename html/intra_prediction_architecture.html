@@ -89,7 +89,7 @@
     <p>在标准视频编码中，色度预测经常需要复用亮度的预测方向（如 DM 模式/Chroma from Luma）。因此**亮度和色度的模式竞争并非完全并行，而是有着严格的先后顺序**。</p>
     
     <div class="mermaid">
-    graph TD
+    graph LR
         A[开始 Intra 模式决策] --> B[1. Luma 候选模式竞争]
         B --> C{计算 Luma SAD/Cost}
         C --> D[确定 Best Luma Mode]
