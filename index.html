@@ -120,58 +120,7 @@
     </div>
     <div class="diagram-caption">图 1：亮度优先竞争，色度后置跟随（采用双行折叠布局保证可读性）</div>
 
-    <h2>2. MD（模式粗选）与 RDO（精细优化）的彻底解耦设计</h2>
-    <p>这是硬件编码器实现极速并行计算的最核心架构优化。为了打破“当前 CU 预测必须等待前一个 CU 重建完毕”的空间串行死锁，硬件设计采用了**两阶段选拔制**。</p>
-    
-    <div class="mermaid">
-    sequenceDiagram
-        participant Orig as 原始图像 (Orig Data)
-        participant MD as 模式粗选 (Rough MD)
-        participant Recon as 重建缓冲 (Recon Data)
-        participant RDO as 率失真优化 (RDO)
-        
-        Note over Orig,MD: 阶段一：打破依赖，高并发粗选
-        Orig->>MD: 读取相邻原始像素 (USING_INPUT)
-        MD->>MD: 针对所有候选模式快速计算 SAD/SATD
-        MD->>RDO: 输出 Top-N 候选模式
-        
-        Note over Recon,RDO: 阶段二：串行等待，真实重建精选
-        Recon->>RDO: 等待左/上方真实完工，读取重建像素 (USING_RECON)
-        RDO->>RDO: 针对 Top-N 模式，执行真实预测、DCT、量化
-        RDO->>RDO: 计算准确的 RD Cost (Rate + Distortion)
-        RDO-->>Recon: 敲定最终 Best Mode，生成当前块重建像素并回写
-    </div>
-    <div class="diagram-caption">图 2：MD 模式粗选与 RDO 精细优化的彻底解耦时序图</div>
-
-    <h2>3. 空间依赖瓶颈的突破与编解码一致性</h2>
-    <div class="highlight">
-        <strong>Drift-Free 保障：</strong> 尽管在 MD 阶段编码器“作弊”使用了无损的原始像素，但这只是为了筛选模式。在决定最终码流内容的 RDO 阶段，编码器被强制要求使用与解码端完全相同的重建像素，确保绝对一致性。
-    </div>
-
-    <div class="mermaid">
-    flowchart LR
-        subgraph S1 ["理论全串行 - 极慢"]
-            direction TD
-            A1["CU 0 编码重建"] --> B1["CU 1 编码重建"] --> C1["CU 2 编码重建"]
-        end
-
-        subgraph S2 ["实际硬件模型 - MD并发 / RDO串行"]
-            direction TD
-            O["原图同时输入"] --> M0["CU 0 RMD 粗选"]
-            O --> M1["CU 1 RMD 粗选"]
-            O --> M2["CU 2 RMD 粗选"]
-            
-            M0 -. "Top-N 候选" .-> R0["CU 0 真实 RDO 重建"]
-            M1 -. "Top-N 候选" .-> R1["CU 1 真实 RDO 重建"]
-            M2 -. "Top-N 候选" .-> R2["CU 2 真实 RDO 重建"]
-            
-            R0 -->|"提供 Recon"| R1
-            R1 -->|"提供 Recon"| R2
-        end
-    </div>
-    <div class="diagram-caption">图 3：理论全串行与实际 MD/RDO 硬件解耦流水线对比</div>
-
-    <hr style="margin: 50px 0; border: 1px solid #e0e0e0;">
+<hr style="margin: 50px 0; border: 1px solid #e0e0e0;">
 
     <h3>1.2 痛点解析一：MPM 的强依赖流水线气泡</h3>
     <div class="highlight" style="background-color: #e3f2fd; border-left-color: #1976d2;">
@@ -234,6 +183,67 @@
             <div class="diagram-caption" style="margin-bottom: 0;">图 4-1：实际 Frame 空间下，基于已知 Left/Top 状态的 MPM 候选裂变过程</div>
         </div>
     </div>
+
+    <h2>2. MD（模式粗选）与 RDO（精细优化）的彻底解耦设计</h2>
+    <p>这是硬件编码器实现极速并行计算的最核心架构优化。为了打破“当前 CU 预测必须等待前一个 CU 重建完毕”的空间串行死锁，硬件设计采用了**两阶段选拔制**。</p>
+    
+    <div class="mermaid">
+    sequenceDiagram
+        participant Orig as 原始图像 (Orig Data)
+        participant MD as 模式粗选 (Rough MD)
+        participant Recon as 重建缓冲 (Recon Data)
+        participant RDO as 率失真优化 (RDO)
+        
+        Note over Orig,MD: 阶段一：打破依赖，高并发粗选
+        Orig->>MD: 读取相邻原始像素 (USING_INPUT)
+        MD->>MD: 针对所有候选模式快速计算 SAD/SATD
+        MD->>RDO: 输出 Top-N 候选模式
+        
+        Note over Recon,RDO: 阶段二：串行等待，真实重建精选
+        Recon->>RDO: 等待左/上方真实完工，读取重建像素 (USING_RECON)
+        RDO->>RDO: 针对 Top-N 模式，执行真实预测、DCT、量化
+        RDO->>RDO: 计算准确的 RD Cost (Rate + Distortion)
+        RDO-->>Recon: 敲定最终 Best Mode，生成当前块重建像素并回写
+    </div>
+    <div class="diagram-caption">图 2：MD 模式粗选与 RDO 精细优化的彻底解耦时序图</div>
+
+    <h2>3. 空间依赖瓶颈的突破与编解码一致性</h2>
+    <div class="highlight">
+        <strong>Drift-Free 保障：</strong> 尽管在 MD 阶段编码器“作弊”使用了无损的原始像素，但这只是为了筛选模式。在决定最终码流内容的 RDO 阶段，编码器被强制要求使用与解码端完全相同的重建像素，确保绝对一致性。
+    </div>
+
+    <div class="mermaid">
+    flowchart LR
+        subgraph S1 ["理论全串行 (极慢)"]
+            direction TD
+            A1["CU 0 编码重建"] --> B1["CU 1 编码重建"] --> C1["CU 2 编码重建"]
+        end
+
+        subgraph S2 ["实际硬件模型 (MD并发与RDO串行)"]
+            direction TD
+            O["原图同时输入"]
+            M0["CU 0 RMD 粗选"]
+            M1["CU 1 RMD 粗选"]
+            M2["CU 2 RMD 粗选"]
+            R0["CU 0 真实 RDO 重建"]
+            R1["CU 1 真实 RDO 重建"]
+            R2["CU 2 真实 RDO 重建"]
+            
+            O --> M0
+            O --> M1
+            O --> M2
+            
+            M0 -.-> R0
+            M1 -.-> R1
+            M2 -.-> R2
+            
+            R0 --> R1
+            R1 --> R2
+        end
+    </div>
+    <div class="diagram-caption">图 3：理论全串行与实际 MD/RDO 硬件解耦流水线对比</div>
+
+    
     <p><strong>硬件流水线瓶颈：</strong> 为了生成当前块的 MPM 列表，它必须<strong>死等</strong>左方和上方块彻底做完 RDO 并决出最终模式。在硬件上，这意味着相邻块之间存在强烈的模式层面的数据依赖，导致极长的等待时间和流水线气泡。</p>
     <div class="success">
         <strong>我们的 C-Model 做法 (区域冻结降级)：</strong><br>
