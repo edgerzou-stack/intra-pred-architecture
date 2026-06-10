@@ -149,7 +149,8 @@
 
 
     <hr style="margin: 50px 0; border: 1px solid #e0e0e0;">
-<h3>1.2 痛点解析一：MPM 的强依赖流水线气泡</h3>
+<h2>2. 传统帧内预测四大痛点解析与 C-Model 规避方案</h2>
+    <h3>2.1 痛点解析一：MPM 的强依赖流水线气泡</h3>
     <div class="highlight" style="background-color: #e3f2fd; border-left-color: #1976d2;">
         <strong>💡 什么是 MPM (Most Probable Mode) 算法？</strong><br>
         MPM 是一种利用空间相邻性来压缩模式编码比特数的算法。核心思想是：当前块的纹理方向极有可能与它左侧和上方的相邻块保持一致。因此，编码器会根据左块和上块的最终预测模式，推导出一个“最可能模式列表”。如果当前块最优模式在这个列表中，只需极少比特即可编码。
@@ -216,7 +217,7 @@
         通过走读代码发现，C-Model 在这块采用了和 Inter HMVP 高度一致的**区域冻结思路**。例如代码中的 <code>ims->rdc32.mpm[i] = mpm[i]</code> 逻辑，直接按 CU32 粒度提取并锁定了一组共享的 MPM。整个 CU32 内的子块强行复用这组冻结的 MPM，从而**彻底斩断了子块间互相等待 Intra 模式的流水线气泡**，实现了前端极致并发。
     </div>
     <hr style="margin: 40px 0; border-top: 1px dashed #ccc;">
-<h3>1.3 痛点解析二：CCLM 引发的最长色度挂起 (C-Model 未引入)</h3>
+<h3>2.2 痛点解析二：CCLM 引发的最长色度挂起 (C-Model 未引入)</h3>
     <div class="highlight" style="background-color: #e3f2fd; border-left-color: #1976d2;">
         <strong>💡 什么是 CCLM (跨分量线性模型) 算法？</strong><br>
         CCLM 是一种利用亮度 (Luma) 像素来预测色度 (Chroma) 像素的算法。它假设亮度和色度在同一个块内存在线性关系 (Chroma = α × Luma + β)。编码器通过对相邻的亮度重建像素和色度重建像素进行下采样和线性拟合，计算出参数 α 和 β，然后直接代入当前块的亮度重建像素求出色度预测值。
@@ -251,7 +252,7 @@
     </div>
     <hr style="margin: 40px 0; border-top: 1px dashed #ccc;">
 
-    <h3>1.4 痛点解析三：极小尺寸块的密集反馈噩梦 (ISP 已被 C-Model 舍弃)</h3>
+    <h3>2.3 痛点解析三：极小尺寸块的密集反馈噩梦 (ISP 已被 C-Model 舍弃)</h3>
     <div class="highlight" style="background-color: #e3f2fd; border-left-color: #1976d2;">
         <strong>💡 什么是 ISP (Intra Sub-Partitions) 算法？</strong><br>
         ISP 允许将一个常规的亮度预测块 (如 8x8) 沿水平或垂直方向强制切分为多个子块 (如四个 8x2 或 2x8)。最致命的是，这些子块在 CU 内部必须进行首尾相接的串行预测和重建：前一个子块的重建像素，必须立刻作为下一个子块的参考像素。
@@ -292,7 +293,7 @@
     </div>
     <hr style="margin: 40px 0; border-top: 1px dashed #ccc;">
 
-    <h3>1.5 痛点解析四：多参考行 (MRL) 引发的 SRAM 带宽剧增 (C-Model 已禁用)</h3>
+    <h3>2.4 痛点解析四：多参考行 (MRL) 引发的 SRAM 带宽剧增 (C-Model 已禁用)</h3>
     <div class="highlight" style="background-color: #e3f2fd; border-left-color: #1976d2;">
         <strong>💡 什么是 MRL (Multiple Reference Line) 算法？</strong><br>
         传统的帧内预测只允许使用紧挨着当前块最外面的一行/一列相邻像素作为参考。而 MRL 算法打破了这个限制，允许预测器跳过第一行，去拾取外围第 2 行或第 3 行的重建像素进行方向投影预测，以此来捕捉更远距离的纹理趋势。
@@ -326,7 +327,7 @@
         基于 PPA（面积与功耗）的极致权衡，当前的 C-Model 并未开启或引入 MRL。SRAM 只需要老老实实地缓存紧贴着边界的一行一列像素。这保证了线管系统（Line Buffer）的极简设计和可预测的超低内存带宽。
     </div>
     <hr style="margin: 50px 0; border: 1px solid #e0e0e0;">
-<h2>2. MD（模式粗选）与 RDO（精细优化）的彻底解耦设计</h2>
+<h2>3. MD（模式粗选）与 RDO（精细优化）的彻底解耦设计</h2>
     <p>这是硬件编码器实现极速并行计算的最核心架构优化。为了打破“当前 CU 预测必须等待前一个 CU 重建完毕”的空间串行死锁，硬件设计采用了**两阶段选拔制**。</p>
     
     <div class="mermaid">
@@ -349,7 +350,7 @@
     </div>
     <div class="diagram-caption">图 2：MD 模式粗选与 RDO 精细优化的彻底解耦时序图</div>
     <hr style="margin: 50px 0; border: 1px solid #e0e0e0;">
-<h2>3. 空间依赖瓶颈的突破与编解码一致性</h2>
+<h2>4. 空间依赖瓶颈的突破与编解码一致性</h2>
     <div class="highlight">
         <strong>Drift-Free 保障：</strong> 尽管在 MD 阶段编码器“作弊”使用了无损的原始像素，但这只是为了筛选模式。在决定最终码流内容的 RDO 阶段，编码器被强制要求使用与解码端完全相同的重建像素，确保绝对一致性。
     </div>
@@ -410,7 +411,7 @@
     <div class="diagram-caption">图 3：理论全串行与实际 MD/RDO 硬件解耦流水线对比</div>
 <hr style="margin: 50px 0; border: 1px solid #e0e0e0;">
 
-    <h2>4. IPD 与 RDO 的核心计算环路 (Calculation Loop)</h2>
+    <h2>5. IPD 与 RDO 的核心计算环路 (Calculation Loop)</h2>
     <p>在硬件视频编码器中，候选模式的精细评估并非一蹴而就，而是需要在一个紧密耦合的反馈环路中运行。这个环路由 <strong>IPD (Intra Prediction Datapath / 帧内预测数据通路)</strong> 与 <strong>RDO (Rate-Distortion Optimization / 率失真优化)</strong> 模块共同构成。</p>
     
     <div class="highlight" style="background-color: #f3e5f5; border-left-color: var(--primary);">
