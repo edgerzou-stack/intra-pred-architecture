@@ -144,22 +144,24 @@
     </div>
 
     <div class="mermaid">
-    graph LR
+    flowchart LR
         subgraph S1 [理论全串行 - 极慢]
-            A1[CU 0 编码重建] --> B1[CU 1 编码重建] --> C1[CU 2 编码重建]
+            direction TD
+            A1["CU 0 编码重建"] --> B1["CU 1 编码重建"] --> C1["CU 2 编码重建"]
         end
 
         subgraph S2 [实际硬件模型 - MD并发 / RDO串行]
-            O[原图同时输入] --> M0[CU 0 RMD 粗选]
-            O --> M1[CU 1 RMD 粗选]
-            O --> M2[CU 2 RMD 粗选]
+            direction TD
+            O["原图同时输入"] --> M0["CU 0 RMD 粗选"]
+            O --> M1["CU 1 RMD 粗选"]
+            O --> M2["CU 2 RMD 粗选"]
             
-            M0 -.->|Top-N 候选| R0
-            M1 -.->|Top-N 候选| R1
-            M2 -.->|Top-N 候选| R2
+            M0 -.->|"Top-N 候选"| R0["CU 0 真实 RDO 重建"]
+            M1 -.->|"Top-N 候选"| R1["CU 1 真实 RDO 重建"]
+            M2 -.->|"Top-N 候选"| R2["CU 2 真实 RDO 重建"]
             
-            R0[CU 0 真实 RDO 重建] -->|提供 Recon| R1[CU 1 真实 RDO 重建]
-            R1 -->|提供 Recon| R2[CU 2 真实 RDO 重建]
+            R0 -->|"提供 Recon"| R1
+            R1 -->|"提供 Recon"| R2
         end
     </div>
     <div class="diagram-caption">图 3：理论全串行与实际 MD/RDO 硬件解耦流水线对比</div>
