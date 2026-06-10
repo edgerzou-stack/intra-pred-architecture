@@ -6,7 +6,12 @@
     <title>VideoEncoder_Project 帧内预测架构总结</title>
     <script type="module">
       import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
-      mermaid.initialize({ startOnLoad: true, theme: 'default' });
+      mermaid.initialize({ 
+          startOnLoad: true, 
+          theme: 'default',
+          themeVariables: { fontSize: '30px' },
+          flowchart: { nodeSpacing: 50, rankSpacing: 70, curve: 'bumpX' }
+      });
     </script>
     <style>
         :root {
@@ -435,7 +440,7 @@
     </div>
 
     <div class="mermaid mermaid-stretch">
-    %%{init: {'theme': 'default', 'themeVariables': {'fontSize': '26px'}, 'flowchart': {'nodeSpacing': 30, 'rankSpacing': 50, 'curve': 'bumpX'}}}%%
+    %%{init: {'theme': 'default', 'themeVariables': {'fontSize': '30px'}, 'flowchart': {'nodeSpacing': 50, 'rankSpacing': 80, 'curve': 'bumpX'}}}%%
     flowchart LR
         subgraph Loop ["IPD 与 RDO 核心计算环路"]
             direction LR
