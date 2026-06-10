@@ -175,6 +175,19 @@
     <div class="highlight" style="background-color: #e3f2fd; border-left-color: #1976d2;">
         <strong>💡 什么是 MPM (Most Probable Mode) 算法？</strong><br>
         MPM 是一种利用空间相邻性来压缩模式编码比特数的算法。核心思想是：当前块的纹理方向极有可能与它左侧和上方的相邻块保持一致。因此，编码器会根据左块和上块的最终预测模式，推导出一个“最可能模式列表”。如果当前块最优模式在这个列表中，只需极少比特即可编码。
+        
+        <div class="mermaid">
+        graph LR
+            Top[上方相邻块 Top Mode] --> MPMGen{推导 MPM 列表}
+            Left[左侧相邻块 Left Mode] --> MPMGen
+            MPMGen --> MPMList[生成: MPM List <br> 包含 3~6 个高优候选]
+            
+            style Top fill:#f5f5f5,stroke:#999
+            style Left fill:#f5f5f5,stroke:#999
+            style MPMGen fill:#e1f5fe,stroke:#0288d1
+            style MPMList fill:#fff3e0,stroke:#f57c00
+        </div>
+        <div class="diagram-caption" style="margin-bottom: 0;">图 4：MPM 算法的空间依赖推导模型</div>
     </div>
     <p><strong>硬件流水线瓶颈：</strong> 为了生成当前块的 MPM 列表，它必须<strong>死等</strong>左方和上方块彻底做完 RDO 并决出最终模式。在硬件上，这意味着相邻块之间存在强烈的模式层面的数据依赖，导致极长的等待时间和流水线气泡。</p>
     <div class="success">
