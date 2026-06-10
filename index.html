@@ -351,8 +351,8 @@
     <div class="diagram-caption">图 2：MD 模式粗选与 RDO 精细优化的彻底解耦时序图</div>
     <hr style="margin: 50px 0; border: 1px solid #e0e0e0;">
 <h2>4. 空间依赖瓶颈的突破与编解码一致性</h2>
-    <div class="highlight">
-        <strong>Drift-Free 保障：</strong> 尽管在 MD 阶段编码器“作弊”使用了无损的原始像素，但这只是为了筛选模式。在决定最终码流内容的 RDO 阶段，编码器被强制要求使用与解码端完全相同的重建像素，确保绝对一致性。
+    <div class="critical-alert">
+        <strong>Drift-Free 核心解耦点：</strong> MD 阶段编码器“作弊”<span style="background: #fecaca; padding: 2px 6px; border-radius: 4px; color: #991b1b; font-weight: 700;">使用无损的【原始像素】替代【重建像素】</span>去完成流水线依赖的彻底解耦与高速并发粗选！但在决定最终码流内容的 RDO 阶段，必须老老实实切回与解码端相同的重建像素，确保编解码一致性。
     </div>
 
     
