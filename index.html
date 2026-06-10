@@ -147,9 +147,9 @@
         </div>
     </div>
 
-<hr style="margin: 50px 0; border: 1px solid #e0e0e0;">
 
-    <h3>1.2 痛点解析一：MPM 的强依赖流水线气泡</h3>
+    <hr style="margin: 50px 0; border: 1px solid #e0e0e0;">
+<h3>1.2 痛点解析一：MPM 的强依赖流水线气泡</h3>
     <div class="highlight" style="background-color: #e3f2fd; border-left-color: #1976d2;">
         <strong>💡 什么是 MPM (Most Probable Mode) 算法？</strong><br>
         MPM 是一种利用空间相邻性来压缩模式编码比特数的算法。核心思想是：当前块的纹理方向极有可能与它左侧和上方的相邻块保持一致。因此，编码器会根据左块和上块的最终预测模式，推导出一个“最可能模式列表”。如果当前块最优模式在这个列表中，只需极少比特即可编码。
@@ -210,99 +210,13 @@
             <div class="diagram-caption" style="margin-bottom: 0;">图 4-1：实际 Frame 空间下，基于已知 Left/Top 状态的 MPM 候选裂变过程</div>
         </div>
     </div>
-
-    <h2>2. MD（模式粗选）与 RDO（精细优化）的彻底解耦设计</h2>
-    <p>这是硬件编码器实现极速并行计算的最核心架构优化。为了打破“当前 CU 预测必须等待前一个 CU 重建完毕”的空间串行死锁，硬件设计采用了**两阶段选拔制**。</p>
-    
-    <div class="mermaid">
-    sequenceDiagram
-        participant Orig as 原始图像 (Orig Data)
-        participant MD as 模式粗选 (Rough MD)
-        participant Recon as 重建缓冲 (Recon Data)
-        participant RDO as 率失真优化 (RDO)
-        
-        Note over Orig,MD: 阶段一：打破依赖，高并发粗选
-        Orig->>MD: 读取相邻原始像素 (USING_INPUT)
-        MD->>MD: 针对所有候选模式快速计算 SAD/SATD
-        MD->>RDO: 输出 Top-N 候选模式
-        
-        Note over Recon,RDO: 阶段二：串行等待，真实重建精选
-        Recon->>RDO: 等待左/上方真实完工，读取重建像素 (USING_RECON)
-        RDO->>RDO: 针对 Top-N 模式，执行真实预测、DCT、量化
-        RDO->>RDO: 计算准确的 RD Cost (Rate + Distortion)
-        RDO-->>Recon: 敲定最终 Best Mode，生成当前块重建像素并回写
-    </div>
-    <div class="diagram-caption">图 2：MD 模式粗选与 RDO 精细优化的彻底解耦时序图</div>
-
-    <h2>3. 空间依赖瓶颈的突破与编解码一致性</h2>
-    <div class="highlight">
-        <strong>Drift-Free 保障：</strong> 尽管在 MD 阶段编码器“作弊”使用了无损的原始像素，但这只是为了筛选模式。在决定最终码流内容的 RDO 阶段，编码器被强制要求使用与解码端完全相同的重建像素，确保绝对一致性。
-    </div>
-
-    
-    <!-- 纯 HTML/CSS 原生渲染架构对比图，彻底告别 Mermaid 语法解析错误 -->
-    <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 30px; margin: 30px 0; box-shadow: 0 4px 6px rgba(0,0,0,0.02);">
-        
-        <!-- 理论全串行 -->
-        <div style="margin-bottom: 40px;">
-            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
-                <span style="display: inline-block; width: 12px; height: 12px; background: #ef4444; border-radius: 50%;"></span>
-                <span style="font-size: 15px; font-weight: 700; color: #334155;">理论全串行 (极慢)</span>
-            </div>
-            
-            <!-- Timeline Container -->
-            <div style="position: relative; display: flex; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; height: 50px; overflow: hidden;">
-                <div style="width: 33.33%; background: #fee2e2; border-right: 2px solid #fff; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600; color: #991b1b; transition: all 0.3s; cursor: pointer;" onmouseover="this.style.opacity=0.8" onmouseout="this.style.opacity=1">CU 0 (粗选 + 真实重建)</div>
-                <div style="width: 33.33%; background: #ffedd5; border-right: 2px solid #fff; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600; color: #9a3412; transition: all 0.3s; cursor: pointer;" onmouseover="this.style.opacity=0.8" onmouseout="this.style.opacity=1">CU 1 (粗选 + 真实重建)</div>
-                <div style="width: 33.33%; background: #fef9c3; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600; color: #854d0e; transition: all 0.3s; cursor: pointer;" onmouseover="this.style.opacity=0.8" onmouseout="this.style.opacity=1">CU 2 (粗选 + 真实重建)</div>
-            </div>
-        </div>
-
-        <!-- 实际硬件解耦模型 -->
-        <div>
-            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
-                <span style="display: inline-block; width: 12px; height: 12px; background: #10b981; border-radius: 50%;"></span>
-                <span style="font-size: 15px; font-weight: 700; color: #334155;">实际硬件模型 (高并发模式粗选 + RDO 重建流水线解耦)</span>
-            </div>
-            
-            <div style="position: relative; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; padding: 20px;">
-                <!-- 阶段 1: 兵分多路的并发 MD -->
-                <div style="display: flex; gap: 10px; width: 40%; margin-bottom: 15px;">
-                    <div style="flex: 1; height: 45px; background: #e0f2fe; border: 1px solid #bae6fd; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; color: #0369a1; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">CU 0 粗选</div>
-                    <div style="flex: 1; height: 45px; background: #e0f2fe; border: 1px solid #bae6fd; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; color: #0369a1; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">CU 1 粗选</div>
-                    <div style="flex: 1; height: 45px; background: #e0f2fe; border: 1px solid #bae6fd; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; color: #0369a1; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">CU 2 粗选</div>
-                </div>
-                
-                <!-- 连接提示 -->
-                <div style="display: flex; justify-content: center; width: 100%; margin-bottom: 15px;">
-                    <div style="background: #f1f5f9; padding: 6px 16px; border-radius: 20px; font-size: 12px; color: #475569; font-weight: 500; border: 1px solid #e2e8f0;">
-                        ⬇️ 仅输出 Top-N 候选喂给后级，前级立即释放 ⬇️
-                    </div>
-                </div>
-                
-                <!-- 阶段 2: 严格依赖重建像素的串行 RDO -->
-                <div style="display: flex; width: 100%; justify-content: flex-end;">
-                    <div style="display: flex; width: 60%; border-radius: 6px; overflow: hidden; height: 45px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-                        <div style="flex: 1; background: #dcfce7; border-right: 2px solid #fff; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; color: #166534;">CU 0 真实 RDO</div>
-                        <div style="flex: 1; background: #bbf7d0; border-right: 2px solid #fff; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; color: #166534;">CU 1 真实 RDO</div>
-                        <div style="flex: 1; background: #86efac; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; color: #166534;">CU 2 真实 RDO</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    
-    <div class="diagram-caption">图 3：理论全串行与实际 MD/RDO 硬件解耦流水线对比</div>
-
-    
     <p><strong>硬件流水线瓶颈：</strong> 为了生成当前块的 MPM 列表，它必须<strong>死等</strong>左方和上方块彻底做完 RDO 并决出最终模式。在硬件上，这意味着相邻块之间存在强烈的模式层面的数据依赖，导致极长的等待时间和流水线气泡。</p>
     <div class="success">
         <strong>我们的 C-Model 做法 (区域冻结降级)：</strong><br>
         通过走读代码发现，C-Model 在这块采用了和 Inter HMVP 高度一致的**区域冻结思路**。例如代码中的 <code>ims->rdc32.mpm[i] = mpm[i]</code> 逻辑，直接按 CU32 粒度提取并锁定了一组共享的 MPM。整个 CU32 内的子块强行复用这组冻结的 MPM，从而**彻底斩断了子块间互相等待 Intra 模式的流水线气泡**，实现了前端极致并发。
     </div>
     <hr style="margin: 40px 0; border-top: 1px dashed #ccc;">
-
-    <h3>1.3 痛点解析二：CCLM 引发的最长色度挂起 (C-Model 未引入)</h3>
+<h3>1.3 痛点解析二：CCLM 引发的最长色度挂起 (C-Model 未引入)</h3>
     <div class="highlight" style="background-color: #e3f2fd; border-left-color: #1976d2;">
         <strong>💡 什么是 CCLM (跨分量线性模型) 算法？</strong><br>
         CCLM 是一种利用亮度 (Luma) 像素来预测色度 (Chroma) 像素的算法。它假设亮度和色度在同一个块内存在线性关系 (Chroma = α × Luma + β)。编码器通过对相邻的亮度重建像素和色度重建像素进行下采样和线性拟合，计算出参数 α 和 β，然后直接代入当前块的亮度重建像素求出色度预测值。
@@ -410,7 +324,91 @@
     <div class="success">
         <strong>我们的 C-Model 做法 (克制引入)：</strong><br>
         基于 PPA（面积与功耗）的极致权衡，当前的 C-Model 并未开启或引入 MRL。SRAM 只需要老老实实地缓存紧贴着边界的一行一列像素。这保证了线管系统（Line Buffer）的极简设计和可预测的超低内存带宽。
+    </div>
     <hr style="margin: 50px 0; border: 1px solid #e0e0e0;">
+<h2>2. MD（模式粗选）与 RDO（精细优化）的彻底解耦设计</h2>
+    <p>这是硬件编码器实现极速并行计算的最核心架构优化。为了打破“当前 CU 预测必须等待前一个 CU 重建完毕”的空间串行死锁，硬件设计采用了**两阶段选拔制**。</p>
+    
+    <div class="mermaid">
+    sequenceDiagram
+        participant Orig as 原始图像 (Orig Data)
+        participant MD as 模式粗选 (Rough MD)
+        participant Recon as 重建缓冲 (Recon Data)
+        participant RDO as 率失真优化 (RDO)
+        
+        Note over Orig,MD: 阶段一：打破依赖，高并发粗选
+        Orig->>MD: 读取相邻原始像素 (USING_INPUT)
+        MD->>MD: 针对所有候选模式快速计算 SAD/SATD
+        MD->>RDO: 输出 Top-N 候选模式
+        
+        Note over Recon,RDO: 阶段二：串行等待，真实重建精选
+        Recon->>RDO: 等待左/上方真实完工，读取重建像素 (USING_RECON)
+        RDO->>RDO: 针对 Top-N 模式，执行真实预测、DCT、量化
+        RDO->>RDO: 计算准确的 RD Cost (Rate + Distortion)
+        RDO-->>Recon: 敲定最终 Best Mode，生成当前块重建像素并回写
+    </div>
+    <div class="diagram-caption">图 2：MD 模式粗选与 RDO 精细优化的彻底解耦时序图</div>
+    <hr style="margin: 50px 0; border: 1px solid #e0e0e0;">
+<h2>3. 空间依赖瓶颈的突破与编解码一致性</h2>
+    <div class="highlight">
+        <strong>Drift-Free 保障：</strong> 尽管在 MD 阶段编码器“作弊”使用了无损的原始像素，但这只是为了筛选模式。在决定最终码流内容的 RDO 阶段，编码器被强制要求使用与解码端完全相同的重建像素，确保绝对一致性。
+    </div>
+
+    
+    <!-- 纯 HTML/CSS 原生渲染架构对比图，彻底告别 Mermaid 语法解析错误 -->
+    <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 30px; margin: 30px 0; box-shadow: 0 4px 6px rgba(0,0,0,0.02);">
+        
+        <!-- 理论全串行 -->
+        <div style="margin-bottom: 40px;">
+            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
+                <span style="display: inline-block; width: 12px; height: 12px; background: #ef4444; border-radius: 50%;"></span>
+                <span style="font-size: 15px; font-weight: 700; color: #334155;">理论全串行 (极慢)</span>
+            </div>
+            
+            <!-- Timeline Container -->
+            <div style="position: relative; display: flex; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; height: 50px; overflow: hidden;">
+                <div style="width: 33.33%; background: #fee2e2; border-right: 2px solid #fff; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600; color: #991b1b; transition: all 0.3s; cursor: pointer;" onmouseover="this.style.opacity=0.8" onmouseout="this.style.opacity=1">CU 0 (粗选 + 真实重建)</div>
+                <div style="width: 33.33%; background: #ffedd5; border-right: 2px solid #fff; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600; color: #9a3412; transition: all 0.3s; cursor: pointer;" onmouseover="this.style.opacity=0.8" onmouseout="this.style.opacity=1">CU 1 (粗选 + 真实重建)</div>
+                <div style="width: 33.33%; background: #fef9c3; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600; color: #854d0e; transition: all 0.3s; cursor: pointer;" onmouseover="this.style.opacity=0.8" onmouseout="this.style.opacity=1">CU 2 (粗选 + 真实重建)</div>
+            </div>
+        </div>
+
+        <!-- 实际硬件解耦模型 -->
+        <div>
+            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
+                <span style="display: inline-block; width: 12px; height: 12px; background: #10b981; border-radius: 50%;"></span>
+                <span style="font-size: 15px; font-weight: 700; color: #334155;">实际硬件模型 (高并发模式粗选 + RDO 重建流水线解耦)</span>
+            </div>
+            
+            <div style="position: relative; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; padding: 20px;">
+                <!-- 阶段 1: 兵分多路的并发 MD -->
+                <div style="display: flex; gap: 10px; width: 40%; margin-bottom: 15px;">
+                    <div style="flex: 1; height: 45px; background: #e0f2fe; border: 1px solid #bae6fd; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; color: #0369a1; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">CU 0 粗选</div>
+                    <div style="flex: 1; height: 45px; background: #e0f2fe; border: 1px solid #bae6fd; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; color: #0369a1; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">CU 1 粗选</div>
+                    <div style="flex: 1; height: 45px; background: #e0f2fe; border: 1px solid #bae6fd; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; color: #0369a1; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">CU 2 粗选</div>
+                </div>
+                
+                <!-- 连接提示 -->
+                <div style="display: flex; justify-content: center; width: 100%; margin-bottom: 15px;">
+                    <div style="background: #f1f5f9; padding: 6px 16px; border-radius: 20px; font-size: 12px; color: #475569; font-weight: 500; border: 1px solid #e2e8f0;">
+                        ⬇️ 仅输出 Top-N 候选喂给后级，前级立即释放 ⬇️
+                    </div>
+                </div>
+                
+                <!-- 阶段 2: 严格依赖重建像素的串行 RDO -->
+                <div style="display: flex; width: 100%; justify-content: flex-end;">
+                    <div style="display: flex; width: 60%; border-radius: 6px; overflow: hidden; height: 45px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                        <div style="flex: 1; background: #dcfce7; border-right: 2px solid #fff; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; color: #166534;">CU 0 真实 RDO</div>
+                        <div style="flex: 1; background: #bbf7d0; border-right: 2px solid #fff; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; color: #166534;">CU 1 真实 RDO</div>
+                        <div style="flex: 1; background: #86efac; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; color: #166534;">CU 2 真实 RDO</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="diagram-caption">图 3：理论全串行与实际 MD/RDO 硬件解耦流水线对比</div>
+<hr style="margin: 50px 0; border: 1px solid #e0e0e0;">
 
     <h2>4. IPD 与 RDO 的核心计算环路 (Calculation Loop)</h2>
     <p>在硬件视频编码器中，候选模式的精细评估并非一蹴而就，而是需要在一个紧密耦合的反馈环路中运行。这个环路由 <strong>IPD (Intra Prediction Datapath / 帧内预测数据通路)</strong> 与 <strong>RDO (Rate-Distortion Optimization / 率失真优化)</strong> 模块共同构成。</p>
