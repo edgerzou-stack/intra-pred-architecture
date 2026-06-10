@@ -212,17 +212,16 @@
             
             <div class="mermaid">
             graph LR
-                subgraph 实际 Frame 中的 CU 块取样空间
-                    direction TD
-                    Top["上方 CU: <br>已完工 (如模式 26 垂直)"] 
-                    Left["左侧 CU: <br>已完工 (如模式 10 水平)"] --> Curr["当前待预测 CU"]
+                subgraph CU_Space ["实际 Frame 中的 CU 块取样空间"]
+                    Top["上方 CU:<br>已完工 (如模式 26 垂直)"] 
+                    Left["左侧 CU:<br>已完工 (如模式 10 水平)"] --> Curr["当前待预测 CU"]
                     Top --> Curr
                 end
                 
-                Top -.->|提取 Top=26| MPMGen{"MPM 列表生成算法<br>(C-Model 逻辑)"}
-                Left -.->|提取 Left=10| MPMGen
+                Top -. "提取 Top=26" .-> MPMGen["MPM 列表生成算法<br>(C-Model 逻辑)"]
+                Left -. "提取 Left=10" .-> MPMGen
                 
-                MPMGen --> MPMList["生成多维度 MPM 候选: <br>1. 10 (左侧命中)<br>2. 26 (上方命中)<br>3. 0 (Planar 兜底)<br>4. 1 (DC 兜底)<br>5. 9 (左侧微调 -1)<br>6. 27 (上方微调 +1)"]
+                MPMGen --> MPMList["生成多维度 MPM 候选:<br>1. 10 (左侧命中)<br>2. 26 (上方命中)<br>3. 0 (Planar 兜底)<br>4. 1 (DC 兜底)<br>5. 9 (左侧微调 -1)<br>6. 27 (上方微调 +1)"]
                 
                 style Curr fill:#ffcdd2,stroke:#d32f2f,stroke-width:2px,stroke-dasharray: 5 5
                 style Top fill:#c8e6c9,stroke:#388e3c
