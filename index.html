@@ -106,34 +106,46 @@
     <h3>1.1 亮度 (Luma) 与色度 (Chroma) 的并行决策优化</h3>
     <p>在标准视频编码中，色度预测经常需要复用亮度的最佳预测方向（如 DM 模式/Chroma from Luma）。理论上，这意味着色度必须死等亮度算完才能开工。但在我们的 <strong>C-Model (以及对应的实际硬件) 中做了深度的并行优化</strong>：将色度的候选模式拆分为“独立模式”(如 Planar, DC, 水平, 垂直) 和“依赖模式”(DM)。独立模式会与 Luma 决策流<strong>完全并行</strong>计算 Cost，隐藏了大量延迟；只有 DM 模式需要短暂等待 Luma 输出 Best Mode 后再做计算和最终比对。</p>
     
-    <div class="mermaid">
-    flowchart TB
-        subgraph Row1 ["1. Luma 亮度主决策流"]
-            direction LR
-            A["开始 Intra 模式决策"] --> B["Luma 候选模式竞争"]
-            B --> C{"计算 Luma SAD/Cost"}
-            C --> D["确定 Best Luma Mode"]
-        end
-        
-        subgraph Row2 ["2. Chroma 色度决策流 (C-Model 并行优化版)"]
-            direction LR
-            E1["独立 Chroma 模式<br>(Planar/DC/H/V)"] --> F1{"并行计算 Cost"}
-            E2["依赖 Chroma 模式<br>(DM Mode)"] --> F2{"等待后计算 Cost"}
-            
-            F1 --> G["合并候选比较"]
-            F2 --> G
-            G --> H["确定 Best Chroma Mode"]
-        end
-        Row1 -. "透传 Best Luma Mode (仅 DM Mode 需等待)" .-> Row2
-        style B fill:#e1f5fe,stroke:#0288d1
-        style C fill:#e1f5fe,stroke:#0288d1
-        style D fill:#e1f5fe,stroke:#0288d1
-        style E1 fill:#e8f5e9,stroke:#2e7d32
-        style F1 fill:#e8f5e9,stroke:#2e7d32
-        style E2 fill:#fff3e0,stroke:#f57c00
-        style F2 fill:#fff3e0,stroke:#f57c00
+    <div style="display: flex; flex-direction: column; gap: 30px;">
+        <div>
+            <div class="mermaid">
+            flowchart LR
+                LumaStart["开始 Luma 决策"] --> LumaCost{"计算 Luma Cost"} --> LumaBest["决出 Best Luma Mode"]
+                
+                LumaBest -. "透传 Best Mode" .-> DMStart["DM 模式 (Chroma from Luma)"]
+                DMStart --> DMCost{"计算 DM Cost"} --> ChromaBest["参与最终 Chroma 比较"]
+                
+                style LumaCost fill:#e1f5fe,stroke:#0288d1
+                style LumaBest fill:#e1f5fe,stroke:#0288d1
+                style DMStart fill:#fff3e0,stroke:#f57c00
+                style DMCost fill:#fff3e0,stroke:#f57c00
+            </div>
+            <div class="diagram-caption">图 1-a：DM 模式的强依赖流水线 (色度必须死等亮度彻底完工)</div>
+        </div>
+
+        <div>
+            <div class="mermaid">
+            flowchart LR
+                subgraph 并行区 ["高并发计算区域 (隐藏色度计算延迟)"]
+                    direction TB
+                    Luma["Luma 候选模式流"] --> LumaCost{"并行计算 Luma Cost"}
+                    ChromaInd["独立 Chroma 模式<br>(Planar/DC/水平/垂直)"] --> ChromaCost{"并行计算 Chroma Cost"}
+                end
+                
+                LumaCost --> LumaBest["决出 Best Luma Mode"]
+                ChromaCost --> ChromaWait["独立模式结果缓存"]
+                
+                LumaBest --> Merge["最终候选比较<br>(独立模式 + DM模式)"]
+                ChromaWait --> Merge
+                Merge --> Final["确定 Best Chroma Mode"]
+                
+                style LumaCost fill:#e1f5fe,stroke:#0288d1
+                style ChromaCost fill:#e8f5e9,stroke:#2e7d32
+                style ChromaWait fill:#e8f5e9,stroke:#2e7d32
+            </div>
+            <div class="diagram-caption">图 1-b：独立 Chroma 模式的并行优化流 (C-Model 利用软硬件并行完全掩盖延迟)</div>
+        </div>
     </div>
-    <div class="diagram-caption">图 1：亮度优先竞争，色度后置跟随（采用双行折叠布局保证可读性）</div>
 
 <hr style="margin: 50px 0; border: 1px solid #e0e0e0;">
 
