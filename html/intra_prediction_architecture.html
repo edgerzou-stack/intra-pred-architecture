@@ -156,32 +156,41 @@
 
     <hr style="margin: 50px 0; border: 1px solid #e0e0e0;">
 
-    <h2>4. 四大高阶架构痛点与我们的 C-Model 应对策略</h2>
-    <p>除了上述基础的像素级流水线设计，针对业界 Intra Prediction 极其头疼的四大架构瓶颈，我们目前的 C-Model 是这样巧妙化解或规避的：</p>
-
-    <h3>🚨 痛点一：MPM (Most Probable Mode) 的强依赖流水线气泡</h3>
-    <p><strong>问题：</strong> 当前块生成 MPM 列表需要等待左方和上方 CU 彻底决出最终的 Intra Mode，这会导致模式层面的数据冒险和流水线气泡。</p>
-    <div class="success">
-        <strong>我们的 C-Model 做法 (冻结降级)：</strong><br>
-        通过走读代码发现，C-Model 在这块采用了和 Inter HMVP 高度一致的**区域冻结思路**。例如代码中的 <code>ims->rdc32.mpm[i] = mpm[i]</code> 逻辑，直接按 CU32 粒度提取并锁定了一组共享的 MPM。整个 CU32 内的子块强行复用这组冻结的 MPM，从而**彻底斩断了子块间互相等待 Intra 模式的流水线气泡**，实现了前端极致并发。
+    <div class="highlight" style="margin-top: 50px; background-color: var(--secondary); color: white;">
+        <h2 style="color: white; border-left: none; padding-left: 0; margin-top: 0;">高阶架构痛点与我们的 C-Model 应对策略</h2>
+        <p>除了上述基础的像素级流水线设计，针对业界 Intra Prediction 极其头疼的四大架构瓶颈，我们目前的 C-Model 是这样巧妙化解或规避的：</p>
     </div>
 
-    <h3>🚨 痛点二：CCLM（跨分量线性模型）引发的最长色度挂起</h3>
-    <p><strong>问题：</strong> VVC 的 CCLM 要求色度的预测像素直接通过公式从亮度的重建像素 (Recon) 算出来。色度必须等亮度走完 T/Q/IQ/IT 拿到真实 Recon 后才能开始 Pred，极其阻塞流水线。</p>
+    <h2>4. 痛点解析一：MPM 的强依赖流水线气泡</h2>
+    <div class="highlight" style="background-color: #e3f2fd; border-left-color: #1976d2;">
+        <strong>💡 什么是 MPM (Most Probable Mode) 算法？</strong><br>
+        MPM 是一种利用空间相邻性来压缩模式编码比特数的算法。核心思想是：当前块的纹理方向极有可能与它左侧和上方的相邻块保持一致。因此，编码器会根据左块和上块的最终预测模式，推导出一个“最可能模式列表”。如果当前块最优模式在这个列表中，只需极少比特即可编码。
+    </div>
+    <p><strong>硬件流水线瓶颈：</strong> 为了生成当前块的 MPM 列表，它必须<strong>死等</strong>左方和上方块彻底做完 RDO 并决出最终模式。在硬件上，这意味着相邻块之间存在强烈的模式层面的数据依赖，导致极长的等待时间和流水线气泡。</p>
+    <div class="success">
+        <strong>我们的 C-Model 做法 (区域冻结降级)：</strong><br>
+        通过走读代码发现，C-Model 在这块采用了和 Inter HMVP 高度一致的**区域冻结思路**。例如代码中的 <code>ims->rdc32.mpm[i] = mpm[i]</code> 逻辑，直接按 CU32 粒度提取并锁定了一组共享的 MPM。整个 CU32 内的子块强行复用这组冻结的 MPM，从而**彻底斩断了子块间互相等待 Intra 模式的流水线气泡**，实现了前端极致并发。
+    </div>
+    <hr style="margin: 40px 0; border-top: 1px dashed #ccc;">
+
+    <h2>5. 痛点解析二：CCLM 引发的最长色度挂起</h2>
+    <p><strong>硬件流水线瓶颈：</strong> VVC 的 CCLM (跨分量线性模型) 要求色度的预测像素直接通过公式从亮度的重建像素 (Recon) 算出来。色度必须等亮度走完 T/Q/IQ/IT 拿到真实 Recon 后才能开始 Pred，极其阻塞流水线。</p>
     <div class="success">
         <strong>我们的 C-Model 做法 (原生规避)：</strong><br>
         由于我们目前的架构主体依然是沿袭 HEVC 体系（部分融入优质工具），C-Model 中**并未引入 CCLM 这一宽带与流水线杀手特性**。这使得亮度和色度依然可以在拿到模式后，分别独立地进行后续计算，从算法源头上避开了这条最长的色度阻塞路径。
     </div>
+    <hr style="margin: 40px 0; border-top: 1px dashed #ccc;">
 
-    <h3>🚨 痛点三：极小尺寸块 (如 4x4 或 ISP) 的密集反馈噩梦</h3>
-    <p><strong>问题：</strong> 连续的一堆 4x4 小块会导致极高频的串行反馈；而 VVC 的 ISP (帧内子划分) 会在一个 CU 内部再切分且首尾串行依赖，导致流水线深度崩溃。</p>
+    <h2>6. 痛点解析三：极小尺寸块的密集反馈噩梦</h2>
+    <p><strong>硬件流水线瓶颈：</strong> 连续的一堆 4x4 小块会导致极高频的串行反馈；而 VVC 的 ISP (帧内子划分) 会在一个 CU 内部再切分且首尾串行依赖，导致流水线深度崩溃。</p>
     <div class="success">
         <strong>我们的 C-Model 做法 (化繁为简)：</strong><br>
         代码中明确标识了 <code>//ISP not in</code>，我们果断**舍弃了 ISP 这种导致强串行的算法**。对于标准的 4x4 块，我们的架构依靠强大的 MD 并发（原图粗选）掩盖了前期的搜索时间，并且 RDO 阶段只针对 Top-N（极少的候选数量）进行精确计算，将 4x4 带来的串行气泡时长压缩到了硬件可接受的极限。
     </div>
+    <hr style="margin: 40px 0; border-top: 1px dashed #ccc;">
 
-    <h3>🚨 痛点四：多参考行 (MRL) 引发的 SRAM 带宽剧增</h3>
-    <p><strong>问题：</strong> 常规 Intra 只取外圈 1 行 1 列像素，但 VVC 的 MRL 允许使用外圈 3 行内的重建像素，导致 SRAM 读带宽需求成倍暴增，且连线极其复杂。</p>
+    <h2>7. 痛点解析四：多参考行 (MRL) 引发的 SRAM 带宽剧增</h2>
+    <p><strong>硬件流水线瓶颈：</strong> 常规 Intra 只取外圈 1 行 1 列像素，但 VVC 的 MRL 允许使用外圈 3 行内的重建像素，导致 SRAM 读带宽需求成倍暴增，且连线极其复杂。</p>
     <div class="success">
         <strong>我们的 C-Model 做法 (克制引入)：</strong><br>
         基于 PPA（面积与功耗）的极致权衡，当前的 C-Model 并未开启或引入 MRL。SRAM 只需要老老实实地缓存紧贴着边界的一行一列像素。这保证了线管系统（Line Buffer）的极简设计和可预测的超低内存带宽。
