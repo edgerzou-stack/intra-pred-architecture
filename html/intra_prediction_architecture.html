@@ -241,17 +241,17 @@
     </div>
     <hr style="margin: 40px 0; border-top: 1px dashed #ccc;">
 
-    <h2>5. 痛点解析二：CCLM 引发的最长色度挂起</h2>
+    <h2>5. 痛点解析二：CCLM 引发的最长色度挂起 (C-Model 未引入)</h2>
     <div class="highlight" style="background-color: #e3f2fd; border-left-color: #1976d2;">
         <strong>💡 什么是 CCLM (跨分量线性模型) 算法？</strong><br>
         CCLM 是一种利用亮度 (Luma) 像素来预测色度 (Chroma) 像素的算法。它假设亮度和色度在同一个块内存在线性关系 (Chroma = α × Luma + β)。编码器通过对相邻的亮度重建像素和色度重建像素进行下采样和线性拟合，计算出参数 α 和 β，然后直接代入当前块的亮度重建像素求出色度预测值。
         
         <div class="mermaid">
-        graph LR
-            LumaRecon[亮度重建像素] --> Downsample[下采样操作]
-            Neighbor[相邻重建像素求 α 和 β] --> LinearModel
-            Downsample --> LinearModel{线性拟合模型 <br> Chroma = α×L + β}
-            LinearModel --> ChromaPred[生成: 色度预测块]
+        flowchart LR
+            LumaRecon["亮度重建像素"] --> Downsample["下采样操作"]
+            Neighbor["相邻重建像素求 α 和 β"] --> LinearModel
+            Downsample --> LinearModel["线性拟合模型 <br> Chroma = α×L + β"]
+            LinearModel --> ChromaPred["生成: 色度预测块"]
             
             style LumaRecon fill:#f5f5f5,stroke:#999
             style Neighbor fill:#f5f5f5,stroke:#999
@@ -276,18 +276,18 @@
     </div>
     <hr style="margin: 40px 0; border-top: 1px dashed #ccc;">
 
-    <h2>6. 痛点解析三：极小尺寸块的密集反馈噩梦</h2>
+    <h2>6. 痛点解析三：极小尺寸块的密集反馈噩梦 (ISP 已被 C-Model 舍弃)</h2>
     <div class="highlight" style="background-color: #e3f2fd; border-left-color: #1976d2;">
         <strong>💡 什么是 ISP (Intra Sub-Partitions) 算法？</strong><br>
         ISP 允许将一个常规的亮度预测块 (如 8x8) 沿水平或垂直方向强制切分为多个子块 (如四个 8x2 或 2x8)。最致命的是，这些子块在 CU 内部必须进行首尾相接的串行预测和重建：前一个子块的重建像素，必须立刻作为下一个子块的参考像素。
         
         <div class="mermaid">
-        graph LR
-            subgraph ISP 内部串行依赖流
+        flowchart LR
+            subgraph ISP_Flow ["ISP 内部串行依赖流"]
                 direction LR
-                Sub0[子块 0 重建] --> Sub1[子块 1 预测/重建]
-                Sub1 --> Sub2[子块 2 预测/重建]
-                Sub2 --> Sub3[子块 3 预测/重建]
+                Sub0["子块 0 重建"] --> Sub1["子块 1 预测/重建"]
+                Sub1 --> Sub2["子块 2 预测/重建"]
+                Sub2 --> Sub3["子块 3 预测/重建"]
             end
             
             style Sub0 fill:#e1f5fe,stroke:#0288d1
@@ -317,17 +317,17 @@
     </div>
     <hr style="margin: 40px 0; border-top: 1px dashed #ccc;">
 
-    <h2>7. 痛点解析四：多参考行 (MRL) 引发的 SRAM 带宽剧增</h2>
+    <h2>7. 痛点解析四：多参考行 (MRL) 引发的 SRAM 带宽剧增 (C-Model 已禁用)</h2>
     <div class="highlight" style="background-color: #e3f2fd; border-left-color: #1976d2;">
         <strong>💡 什么是 MRL (Multiple Reference Line) 算法？</strong><br>
         传统的帧内预测只允许使用紧挨着当前块最外面的一行/一列相邻像素作为参考。而 MRL 算法打破了这个限制，允许预测器跳过第一行，去拾取外围第 2 行或第 3 行的重建像素进行方向投影预测，以此来捕捉更远距离的纹理趋势。
         
         <div class="mermaid">
-        graph LR
-            Line1[参考行 1 (相邻)] --> Mux{MRL 行选择器}
-            Line2[参考行 2 (较远)] --> Mux
-            Line3[参考行 3 (最远)] --> Mux
-            Mux --> Pred[执行角度投影预测]
+        flowchart LR
+            Line1["参考行 1 (相邻)"] --> Mux["MRL 行选择器"]
+            Line2["参考行 2 (较远)"] --> Mux
+            Line3["参考行 3 (最远)"] --> Mux
+            Mux --> Pred["执行角度投影预测"]
             
             style Line1 fill:#f5f5f5,stroke:#999
             style Line2 fill:#f5f5f5,stroke:#999
