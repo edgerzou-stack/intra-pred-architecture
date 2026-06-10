@@ -89,14 +89,22 @@
     <p>在标准视频编码中，色度预测经常需要复用亮度的预测方向（如 DM 模式/Chroma from Luma）。因此**亮度和色度的模式竞争并非完全并行，而是有着严格的先后顺序**。</p>
     
     <div class="mermaid">
-    graph LR
-        A[开始 Intra 模式决策] --> B[1. Luma 候选模式竞争]
-        B --> C{计算 Luma SAD/Cost}
-        C --> D[确定 Best Luma Mode]
-        D -->|输出 Best Luma Mode| E[2. 构建 Chroma 候选模式列表]
-        E -->|包含 Planar, DC, Hor, Ver, 以及 Luma Mode| F{计算 Chroma SAD/Cost}
-        F --> G[确定 Best Chroma Mode]
-        G --> H[输出最终的 Luma + Chroma 模式组合]
+    graph TD
+        subgraph Row1 [1. Luma 亮度决策流]
+            direction LR
+            A[开始 Intra 模式决策] --> B[Luma 候选模式竞争]
+            B --> C{计算 Luma SAD/Cost}
+            C --> D[确定 Best Luma Mode]
+        end
+        
+        subgraph Row2 [2. Chroma 色度决策流]
+            direction LR
+            E[构建 Chroma 候选模式列表] --> F{计算 Chroma SAD/Cost}
+            F --> G[确定 Best Chroma Mode]
+            G --> H[输出最终模式组合]
+        end
+        
+        D -->|输出 Best Luma Mode| E
         
         style B fill:#e1f5fe,stroke:#0288d1
         style C fill:#e1f5fe,stroke:#0288d1
@@ -105,7 +113,7 @@
         style F fill:#fff3e0,stroke:#f57c00
         style G fill:#fff3e0,stroke:#f57c00
     </div>
-    <div class="diagram-caption">图 1：亮度优先竞争，色度后置跟随</div>
+    <div class="diagram-caption">图 1：亮度优先竞争，色度后置跟随（采用双行折叠布局保证可读性）</div>
 
     <h2>2. MD（模式粗选）与 RDO（精细优化）的彻底解耦设计</h2>
     <p>这是硬件编码器实现极速并行计算的最核心架构优化。为了打破“当前 CU 预测必须等待前一个 CU 重建完毕”的空间串行死锁，硬件设计采用了**两阶段选拔制**。</p>
@@ -128,6 +136,7 @@
         RDO->>RDO: 计算准确的 RD Cost (Rate + Distortion)
         RDO-->>Recon: 敲定最终 Best Mode，生成当前块重建像素并回写
     </div>
+    <div class="diagram-caption">图 2：MD 模式粗选与 RDO 精细优化的彻底解耦时序图</div>
 
     <h2>3. 空间依赖瓶颈的突破与编解码一致性</h2>
     <div class="highlight">
@@ -153,6 +162,7 @@
             R1 -->|提供 Recon| R2[CU 2 真实 RDO 重建]
         end
     </div>
+    <div class="diagram-caption">图 3：理论全串行与实际 MD/RDO 硬件解耦流水线对比</div>
 
     <hr style="margin: 50px 0; border: 1px solid #e0e0e0;">
 
