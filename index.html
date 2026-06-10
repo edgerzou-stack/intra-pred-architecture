@@ -103,11 +103,7 @@
 </div>
 <div class="main-content" id="main-content">
 <div class="container">
-    <div class="top-nav">
-        <a href="#" class="top-nav-link active">1. 帧内预测架构总览 (当前)</a>
-        <a href="#" class="top-nav-link">2. RDO 变换量化交互</a>
-        <a href="#" class="top-nav-link">3. CABAC 熵编码核心</a>
-    </div>
+    <div class="top-nav" id="top-nav"></div>
     <h1>VideoEncoder_Project 帧内预测与模式决策机制总结<br><span style="font-size:0.6em; color:#7f8c8d;">Intra Prediction Architecture & Hardware Bottlenecks</span></h1>
 
     <h2>1. 帧内预测的高阶架构瓶颈与 C-Model 应对策略</h2>
@@ -481,6 +477,7 @@
 <script>
     document.addEventListener('DOMContentLoaded', () => {
         const tocList = document.getElementById('toc-list');
+        const topNav = document.getElementById('top-nav');
         const headers = document.querySelectorAll('.container h2:not(.toc-title), .container h3');
         const mainContent = document.getElementById('main-content');
         
@@ -488,6 +485,7 @@
             const id = 'section-' + index;
             header.id = id;
             
+            // 1. Generate Sidebar TOC
             const li = document.createElement('li');
             li.className = header.tagName === 'H2' ? 'level-2' : 'level-3';
             
@@ -506,13 +504,35 @@
             
             li.appendChild(a);
             tocList.appendChild(li);
+
+            // 2. Generate Top Nav (Only for H2)
+            if (header.tagName === 'H2' && topNav) {
+                const topA = document.createElement('a');
+                topA.href = '#' + id;
+                topA.className = 'top-nav-link';
+                // Extract chapter title (e.g. "1. 帧内预测的高阶架构瓶颈...")
+                topA.textContent = header.textContent;
+                topA.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const target = document.getElementById(id);
+                    mainContent.scrollTo({
+                        top: target.offsetTop - 40,
+                        behavior: 'smooth'
+                    });
+                });
+                topNav.appendChild(topA);
+            }
         });
         
         mainContent.addEventListener('scroll', () => {
             let currentId = '';
+            let currentH2Id = '';
             headers.forEach(header => {
                 if (mainContent.scrollTop >= header.offsetTop - 100) {
                     currentId = header.id;
+                    if (header.tagName === 'H2') {
+                        currentH2Id = header.id;
+                    }
                 }
             });
             
@@ -524,10 +544,46 @@
                     }
                 });
             }
+
+            // Sync Top Nav Active State
+            if (currentH2Id) {
+                document.querySelectorAll('.top-nav-link').forEach(link => {
+                    link.classList.remove('active');
+                    if (link.getAttribute('href') === '#' + currentH2Id) {
+                        link.classList.add('active');
+                    }
+                });
+            } else if (currentId) {
+                // If we are at an H3 before the first H2 (shouldn't happen but just in case)
+                // Find the parent H2 id
+                let foundH2 = '';
+                for (let i = 0; i < headers.length; i++) {
+                    if (headers[i].id === currentId) {
+                        for (let j = i; j >= 0; j--) {
+                            if (headers[j].tagName === 'H2') {
+                                foundH2 = headers[j].id;
+                                break;
+                            }
+                        }
+                        break;
+                    }
+                }
+                if (foundH2) {
+                    document.querySelectorAll('.top-nav-link').forEach(link => {
+                        link.classList.remove('active');
+                        if (link.getAttribute('href') === '#' + foundH2) {
+                            link.classList.add('active');
+                        }
+                    });
+                }
+            }
         });
         
         if(tocList.firstChild) {
             tocList.firstChild.querySelector('a').classList.add('active');
+        }
+        if(topNav && topNav.firstChild) {
+            topNav.firstChild.classList.add('active');
         }
     });
 </script>
