@@ -12,7 +12,7 @@ All documentation is generated and hosted statically via GitHub Pages, deliverin
 
 You can directly access the interactive online documentation via the following link:
 
-### 🎨 1. [Intra Prediction Architecture & MD/RDO Decoupling](https://edgerzou-stack.github.io/intra-pred-architecture/html/intra_prediction_architecture.html)
+### 🎨 1. [Intra Prediction Architecture & MD/RDO Decoupling](https://edgerzou-stack.github.io/intra-pred-architecture/)
 - **Target Audience:** Core Intra Architects, Algorithm Engineers, RTL Designers.
 - **Content:** A comprehensive analysis of Luma/Chroma decision loops, Rough Mode Decision (MD) vs. Rate-Distortion Optimization (RDO) pipeline decoupling, and advanced hardware bottleneck resolutions.
 - **Highlights:**
