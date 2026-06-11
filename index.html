@@ -212,26 +212,81 @@
             如果 Left 和 Top 模式不相同（例如 Left 是水平纹理，Top 是垂直纹理），说明当前块处于纹理交界处。此时 MPM 列表不仅会直接收录 Left 和 Top，还会兜底塞入无方向的 平滑模式（Planar） 和 均值模式（DC）。<br>
             如果在 VVC 等高级标准中，为了提高命中率，算法甚至会在 Left 模式的角度上做微调（例如 Left-1度, Left+1度），从而将候选列表膨胀到 6 个。这就解释了为什么 2 个输入源能裂变出 3~6 个候选。
             
-            <div class="mermaid">
-            graph LR
-                subgraph CU_Space ["实际 Frame 中的 CU 块取样空间"]
-                    Top["上方 CU:<br>已完工 (如模式 26 垂直)"] 
-                    Left["左侧 CU:<br>已完工 (如模式 10 水平)"] --> Curr["当前待预测 CU"]
-                    Top --> Curr
-                end
+            <!-- 全新设计的 MPM 候选裂变过程图解 (CSS Native) -->
+            <div style="background: linear-gradient(145deg, #f8fafc, #f1f5f9); border: 1px solid #e2e8f0; border-radius: 16px; padding: 40px; margin: 30px 0; box-shadow: inset 0 2px 4px rgba(255,255,255,0.5), 0 8px 16px rgba(0,0,0,0.03); display: flex; align-items: center; justify-content: center; gap: 20px; flex-wrap: wrap;">
                 
-                Top -. "提取 Top=26" .-> MPMGen["MPM 列表生成算法<br>(C-Model 逻辑)"]
-                Left -. "提取 Left=10" .-> MPMGen
-                
-                MPMGen --> MPMList["生成多维度 MPM 候选:<br>1. 10 (左侧命中)<br>2. 26 (上方命中)<br>3. 0 (Planar 兜底)<br>4. 1 (DC 兜底)<br>5. 9 (左侧微调 -1)<br>6. 27 (上方微调 +1)"]
-                
-                style Curr fill:#ffcdd2,stroke:#d32f2f,stroke-width:2px,stroke-dasharray: 5 5
-                style Top fill:#c8e6c9,stroke:#388e3c
-                style Left fill:#c8e6c9,stroke:#388e3c
-                style MPMGen fill:#e1f5fe,stroke:#0288d1
-                style MPMList fill:#fff3e0,stroke:#f57c00
+                <!-- 1. 空间模型 -->
+                <div style="display: flex; flex-direction: column; align-items: center;">
+                    <div style="font-weight: bold; color: #475569; margin-bottom: 20px;">空间取样依赖</div>
+                    <div style="position: relative; width: 180px; height: 180px;">
+                        <!-- 左上角占位 -->
+                        <div style="position: absolute; top: 0; left: 0; width: 60px; height: 60px; background: #e2e8f0; border-radius: 8px; opacity: 0.5;"></div>
+                        <!-- Top CU -->
+                        <div style="position: absolute; top: 0; left: 65px; width: 115px; height: 60px; background: linear-gradient(135deg, #86efac, #22c55e); border-radius: 8px; box-shadow: 0 4px 6px rgba(34,197,94,0.2); display: flex; flex-direction: column; align-items: center; justify-content: center; color: white; font-size: 12px; font-weight: bold;">
+                            <span>上方 CU</span>
+                            <span style="font-size: 10px; opacity: 0.9; margin-top: 2px;">模式 26 (垂直)</span>
+                        </div>
+                        <!-- Left CU -->
+                        <div style="position: absolute; top: 65px; left: 0; width: 60px; height: 115px; background: linear-gradient(135deg, #86efac, #22c55e); border-radius: 8px; box-shadow: 0 4px 6px rgba(34,197,94,0.2); display: flex; flex-direction: column; align-items: center; justify-content: center; color: white; font-size: 12px; font-weight: bold; text-align: center;">
+                            <span>左侧<br>CU</span>
+                            <span style="font-size: 10px; opacity: 0.9; margin-top: 4px;">模式 10<br>(水平)</span>
+                        </div>
+                        <!-- Curr CU -->
+                        <div style="position: absolute; top: 65px; left: 65px; width: 115px; height: 115px; background: #fee2e2; border: 2px dashed #ef4444; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #dc2626; font-size: 13px; font-weight: bold; text-align: center; box-shadow: inset 0 0 10px rgba(239,68,68,0.1);">
+                            当前待预测<br>CU
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 2. 数据流与算法模块 -->
+                <div style="display: flex; flex-direction: column; align-items: center; position: relative; margin: 0 10px;">
+                    <!-- 数据流线 -->
+                    <div style="display: flex; flex-direction: column; gap: 30px; margin-bottom: 20px;">
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <span style="font-size: 12px; font-weight: bold; color: #059669; background: #d1fae5; padding: 4px 10px; border-radius: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">提取 Top = 26</span>
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <span style="font-size: 12px; font-weight: bold; color: #059669; background: #d1fae5; padding: 4px 10px; border-radius: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">提取 Left = 10</span>
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                        </div>
+                    </div>
+                    
+                    <!-- 算法中心 -->
+                    <div style="background: white; border-top: 5px solid #3b82f6; border-radius: 12px; padding: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); text-align: center; width: 160px; position: relative;">
+                        <div style="position: absolute; top: -15px; left: 50%; transform: translateX(-50%); background: #3b82f6; color: white; width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 6px rgba(59,130,246,0.3);">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                        </div>
+                        <h4 style="margin: 15px 0 5px 0; color: #1e293b; font-size: 15px;">MPM 生成算法</h4>
+                        <p style="margin: 0; font-size: 12px; color: #64748b;">(C-Model 严格推导)</p>
+                    </div>
+                </div>
+
+                <!-- 3. 输出结果线 -->
+                <div style="display: flex; align-items: center; margin-top: 30px;">
+                    <svg width="40" height="24" viewBox="0 0 40 24" fill="none" stroke="#94a3b8" stroke-width="2"><path d="M5 12h30M28 5l7 7-7 7"/></svg>
+                </div>
+
+                <!-- 4. MPM 列表输出 -->
+                <div style="display: flex; flex-direction: column; align-items: center;">
+                    <div style="font-weight: bold; color: #475569; margin-bottom: 20px;">裂变结果集</div>
+                    <div style="background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 10px 25px rgba(0,0,0,0.05); border-left: 5px solid #f59e0b; width: 200px;">
+                        <div style="background: linear-gradient(135deg, #fef3c7, #fde68a); padding: 12px 15px; font-weight: bold; color: #b45309; font-size: 13px; text-align: center; border-bottom: 1px solid #fcd34d;">
+                            6 维 MPM 候选列表
+                        </div>
+                        <ul style="list-style: none; margin: 0; padding: 15px; font-size: 13px; color: #334155;">
+                            <li style="margin-bottom: 8px; display: flex; justify-content: space-between;"><strong style="color: #ea580c;">1. 模式 10</strong> <span style="color: #94a3b8; font-size: 11px;">(左侧命中)</span></li>
+                            <li style="margin-bottom: 8px; display: flex; justify-content: space-between;"><strong style="color: #ea580c;">2. 模式 26</strong> <span style="color: #94a3b8; font-size: 11px;">(上方命中)</span></li>
+                            <li style="margin-bottom: 8px; display: flex; justify-content: space-between;"><strong style="color: #2563eb;">3. 模式 0</strong> <span style="color: #94a3b8; font-size: 11px;">(Planar兜底)</span></li>
+                            <li style="margin-bottom: 8px; display: flex; justify-content: space-between;"><strong style="color: #2563eb;">4. 模式 1</strong> <span style="color: #94a3b8; font-size: 11px;">(DC 兜底)</span></li>
+                            <li style="margin-bottom: 8px; display: flex; justify-content: space-between;"><strong style="color: #8b5cf6;">5. 模式 9</strong> <span style="color: #94a3b8; font-size: 11px;">(左侧 -1)</span></li>
+                            <li style="display: flex; justify-content: space-between;"><strong style="color: #8b5cf6;">6. 模式 27</strong> <span style="color: #94a3b8; font-size: 11px;">(上方 +1)</span></li>
+                        </ul>
+                    </div>
+                </div>
+
             </div>
-            <div class="diagram-caption" style="margin-bottom: 0;">图 4-1：实际 Frame 空间下，基于已知 Left/Top 状态的 MPM 候选裂变过程</div>
+            <div class="diagram-caption" style="margin-bottom: 0;">图 4-1：全新设计的实际 Frame 空间下 MPM 候选裂变流转</div>
         </div>
     </div>
     <p><strong>硬件流水线瓶颈：</strong> 为了生成当前块的 MPM 列表，它必须<strong>死等</strong>左方和上方块彻底做完 RDO 并决出最终模式。在硬件上，这意味着相邻块之间存在强烈的模式层面的数据依赖，导致极长的等待时间和流水线气泡。</p>
@@ -462,7 +517,217 @@
             <li><strong>最终决策：</strong>通过拉格朗日乘子公式 <code>Cost = D + λ * R</code> 计算出该模式的最终代价。循环测试多个模式后，Cost 最小的胜出！</li>
         </ol>
     </div>
-</div>
+
+    <hr style="margin: 50px 0; border: 1px solid #e0e0e0;">
+    <h2>6. 超大块 (CU64) 与 MTT 架构的局部降维决策策略</h2>
+    <p>在硬件实现中，为了极致压缩评估时间和计算功耗，对于超过最大硬件支持尺寸（如 32x32）的超大块或 MTT（多类型树）划分，我们采用了<strong>局部降维模式选拔 (Mode PK)</strong> 策略。其核心思想是：<strong>用最具代表性的局部区域的 PK 结果，来决定整个超大块的全局最佳预测模式。</strong></p>
+
+    <div class="highlight" style="background-color: #e8f5e9; border-left-color: #2e7d32;">
+        <strong style="color: #2e7d32;">💡 硬件重构策略 (涵盖亮度与色度)：</strong>
+        <ul style="margin: 10px 0 0 0; padding-left: 20px;">
+            <li style="margin-bottom: 8px;"><strong>对于完整的 64x64 CU：</strong> 仅提取其<strong>左上角的 32x32 亮度区域</strong>参与详尽的 Mode PK (代价计算评估)。该局部区域胜出的 Best Luma Pred Mode，将直接被采纳为整个 64x64 CU 的最佳亮度预测模式。</li>
+            <li style="margin-bottom: 8px;"><strong>色度 (Chroma) 的对应降维：</strong> 在 4:2:0 采样下，64x64 亮度块对应 32x32 的色度块。由于硬件支持的<strong>最大色度 TU 变换核为 16x16</strong>，因此降维策略保持高度一致：仅对<strong>左上角的 16x16 色度区域</strong>进行 Mode PK，选出的最佳模式直接复用给该 CU 对应的其余三个 16x16 色度区域。</li>
+            <li><strong>对于尺寸超限的 MTT 块 (含 BT 与 TT)：</strong> 选用靠近已重建参考像素一侧的局部区域。无论是二叉树 (BT) 产生的 <strong>64x32 / 32x64</strong> 块，还是三叉树 (TT) 产生的 <strong>64x16 / 16x64</strong> 侧边块，只要有一边超过 32，就沿着超限边截取靠左或靠上的 32 尺寸区域。具体来说，宽块截取<strong>左侧 32 长度</strong>，高块截取<strong>上方 32 长度</strong>进行 Mode PK。选出的模式直接应用于整个 MTT 块及其对应的色度子区域。</li>
+        </ul>
+    </div>
+
+        <h3 style="margin-top: 40px; color: #1e293b; border-left: 4px solid #3b82f6; padding-left: 10px;">Luma (亮度) 局部 PK 策略图解 (在一个 64x64 整体内展示)</h3>
+    <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 30px; margin: 20px 0; box-shadow: 0 4px 6px rgba(0,0,0,0.02); display: flex; justify-content: space-around; flex-wrap: wrap; gap: 40px;">
+        
+        <!-- 1. 完整 64x64 -->
+        <div style="display: flex; flex-direction: column; align-items: center;">
+            <div style="font-weight: 600; color: #334155; margin-bottom: 15px;">无切分 (Full 64x64)</div>
+            <div style="position: relative; width: 160px; height: 160px; background: #f8fafc; border: 2px dashed #94a3b8; border-radius: 8px; display: flex; flex-wrap: wrap; overflow: hidden;">
+                <div style="box-sizing: border-box; width: 50%; height: 50%; background: #dcfce7; border-right: 1px dashed #cbd5e1; border-bottom: 1px dashed #cbd5e1; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+                    <span style="font-size: 11px; font-weight: bold; color: #166534;">PK 32x32</span>
+                </div>
+                <div style="box-sizing: border-box; width: 50%; height: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; color: #94a3b8; font-style: italic;">复用</div>
+                <div style="box-sizing: border-box; width: 50%; height: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; color: #94a3b8; font-style: italic;">复用</div>
+                <div style="box-sizing: border-box; width: 50%; height: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; color: #94a3b8; font-style: italic;">复用</div>
+            </div>
+            <div class="diagram-caption" style="margin-top: 15px; margin-bottom: 0;">左上角 PK，其余复用</div>
+        </div>
+
+        <!-- 2. BT HOR & VER -->
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 30px;">
+            <div style="display: flex; flex-direction: column; align-items: center;">
+                <div style="font-weight: 600; color: #334155; margin-bottom: 15px;">二叉树水平 (BT HOR)</div>
+                <div style="position: relative; width: 160px; height: 160px; background: #f8fafc; border: 2px solid #64748b; border-radius: 8px; display: flex; flex-direction: column; overflow: hidden;">
+                    <!-- 上 64x32 -->
+                    <div style="width: 100%; height: 50%; border-bottom: 2px solid #64748b; display: flex;">
+                        <div style="width: 50%; height: 100%; background: #dcfce7; border-right: 1px dashed #cbd5e1; display: flex; align-items: center; justify-content: center;"><span style="font-size: 11px; font-weight: bold; color: #166534;">PK 32x32</span></div>
+                        <div style="width: 50%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 11px; color: #94a3b8; font-style: italic;">复用</div>
+                    </div>
+                    <!-- 下 64x32 -->
+                    <div style="width: 100%; height: 50%; display: flex;">
+                        <div style="width: 50%; height: 100%; background: #dcfce7; border-right: 1px dashed #cbd5e1; display: flex; align-items: center; justify-content: center;"><span style="font-size: 11px; font-weight: bold; color: #166534;">PK 32x32</span></div>
+                        <div style="width: 50%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 11px; color: #94a3b8; font-style: italic;">复用</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div style="display: flex; flex-direction: column; align-items: center;">
+                <div style="font-weight: 600; color: #334155; margin-bottom: 15px;">二叉树垂直 (BT VER)</div>
+                <div style="position: relative; width: 160px; height: 160px; background: #f8fafc; border: 2px solid #64748b; border-radius: 8px; display: flex; overflow: hidden;">
+                    <!-- 左 32x64 -->
+                    <div style="width: 50%; height: 100%; border-right: 2px solid #64748b; display: flex; flex-direction: column;">
+                        <div style="width: 100%; height: 50%; background: #dcfce7; border-bottom: 1px dashed #cbd5e1; display: flex; align-items: center; justify-content: center;"><span style="font-size: 11px; font-weight: bold; color: #166534;">PK 32x32</span></div>
+                        <div style="width: 100%; height: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; color: #94a3b8; font-style: italic;">复用</div>
+                    </div>
+                    <!-- 右 32x64 -->
+                    <div style="width: 50%; height: 100%; display: flex; flex-direction: column;">
+                        <div style="width: 100%; height: 50%; background: #dcfce7; border-bottom: 1px dashed #cbd5e1; display: flex; align-items: center; justify-content: center;"><span style="font-size: 11px; font-weight: bold; color: #166534;">PK 32x32</span></div>
+                        <div style="width: 100%; height: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; color: #94a3b8; font-style: italic;">复用</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 3. TT HOR & VER -->
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 30px;">
+            <div style="display: flex; flex-direction: column; align-items: center;">
+                <div style="font-weight: 600; color: #334155; margin-bottom: 15px;">三叉树水平 (TT HOR)</div>
+                <div style="position: relative; width: 160px; height: 160px; background: #f8fafc; border: 2px solid #64748b; border-radius: 8px; display: flex; flex-direction: column; overflow: hidden;">
+                    <!-- 上 64x16 -->
+                    <div style="width: 100%; height: 25%; border-bottom: 2px solid #64748b; display: flex;">
+                        <div style="width: 50%; height: 100%; background: #dcfce7; border-right: 1px dashed #cbd5e1; display: flex; align-items: center; justify-content: center;"><span style="font-size: 9px; font-weight: bold; color: #166534;">PK 32x16</span></div>
+                        <div style="width: 50%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 9px; color: #94a3b8; font-style: italic;">复用</div>
+                    </div>
+                    <!-- 中 64x32 -->
+                    <div style="width: 100%; height: 50%; border-bottom: 2px solid #64748b; display: flex;">
+                        <div style="width: 50%; height: 100%; background: #dcfce7; border-right: 1px dashed #cbd5e1; display: flex; align-items: center; justify-content: center;"><span style="font-size: 11px; font-weight: bold; color: #166534;">PK 32x32</span></div>
+                        <div style="width: 50%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 11px; color: #94a3b8; font-style: italic;">复用</div>
+                    </div>
+                    <!-- 下 64x16 -->
+                    <div style="width: 100%; height: 25%; display: flex;">
+                        <div style="width: 50%; height: 100%; background: #dcfce7; border-right: 1px dashed #cbd5e1; display: flex; align-items: center; justify-content: center;"><span style="font-size: 9px; font-weight: bold; color: #166534;">PK 32x16</span></div>
+                        <div style="width: 50%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 9px; color: #94a3b8; font-style: italic;">复用</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div style="display: flex; flex-direction: column; align-items: center;">
+                <div style="font-weight: 600; color: #334155; margin-bottom: 15px;">三叉树垂直 (TT VER)</div>
+                <div style="position: relative; width: 160px; height: 160px; background: #f8fafc; border: 2px solid #64748b; border-radius: 8px; display: flex; overflow: hidden;">
+                    <!-- 左 16x64 -->
+                    <div style="width: 25%; height: 100%; border-right: 2px solid #64748b; display: flex; flex-direction: column;">
+                        <div style="width: 100%; height: 50%; background: #dcfce7; border-bottom: 1px dashed #cbd5e1; display: flex; align-items: center; justify-content: center; text-align: center;"><span style="font-size: 9px; font-weight: bold; color: #166534; line-height: 1;">PK<br>16x32</span></div>
+                        <div style="width: 100%; height: 50%; display: flex; align-items: center; justify-content: center; font-size: 9px; color: #94a3b8; font-style: italic;">复用</div>
+                    </div>
+                    <!-- 中 32x64 -->
+                    <div style="width: 50%; height: 100%; border-right: 2px solid #64748b; display: flex; flex-direction: column;">
+                        <div style="width: 100%; height: 50%; background: #dcfce7; border-bottom: 1px dashed #cbd5e1; display: flex; align-items: center; justify-content: center;"><span style="font-size: 11px; font-weight: bold; color: #166534;">PK 32x32</span></div>
+                        <div style="width: 100%; height: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; color: #94a3b8; font-style: italic;">复用</div>
+                    </div>
+                    <!-- 右 16x64 -->
+                    <div style="width: 25%; height: 100%; display: flex; flex-direction: column;">
+                        <div style="width: 100%; height: 50%; background: #dcfce7; border-bottom: 1px dashed #cbd5e1; display: flex; align-items: center; justify-content: center; text-align: center;"><span style="font-size: 9px; font-weight: bold; color: #166534; line-height: 1;">PK<br>16x32</span></div>
+                        <div style="width: 100%; height: 50%; display: flex; align-items: center; justify-content: center; font-size: 9px; color: #94a3b8; font-style: italic;">复用</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <h3 style="margin-top: 40px; color: #1e293b; border-left: 4px solid #8b5cf6; padding-left: 10px;">Chroma (色度) 降维 PK 策略图解 (在一个 32x32 色度整体内展示, 4:2:0)</h3>
+    <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 30px; margin: 20px 0; box-shadow: 0 4px 6px rgba(0,0,0,0.02); display: flex; justify-content: space-around; flex-wrap: wrap; gap: 40px;">
+        
+        <!-- 1. 完整 32x32 色度 -->
+        <div style="display: flex; flex-direction: column; align-items: center;">
+            <div style="font-weight: 600; color: #334155; margin-bottom: 15px;">无切分 (Full 32x32 色度)</div>
+            <div style="position: relative; width: 120px; height: 120px; background: #f8fafc; border: 2px dashed #94a3b8; border-radius: 8px; display: flex; flex-wrap: wrap; overflow: hidden;">
+                <div style="box-sizing: border-box; width: 50%; height: 50%; background: #f3e8ff; border-right: 1px dashed #cbd5e1; border-bottom: 1px dashed #cbd5e1; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+                    <span style="font-size: 10px; font-weight: bold; color: #581c87;">PK 16x16</span>
+                </div>
+                <div style="box-sizing: border-box; width: 50%; height: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; color: #94a3b8; font-style: italic;">复用</div>
+                <div style="box-sizing: border-box; width: 50%; height: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; color: #94a3b8; font-style: italic;">复用</div>
+                <div style="box-sizing: border-box; width: 50%; height: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; color: #94a3b8; font-style: italic;">复用</div>
+            </div>
+            <div class="diagram-caption" style="margin-top: 15px; margin-bottom: 0;">左上角 PK，其余复用</div>
+        </div>
+
+        <!-- 2. BT HOR & VER 色度 -->
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 30px;">
+            <div style="display: flex; flex-direction: column; align-items: center;">
+                <div style="font-weight: 600; color: #334155; margin-bottom: 15px;">二叉树水平 (BT HOR)</div>
+                <div style="position: relative; width: 120px; height: 120px; background: #f8fafc; border: 2px solid #64748b; border-radius: 8px; display: flex; flex-direction: column; overflow: hidden;">
+                    <!-- 上 32x16 -->
+                    <div style="width: 100%; height: 50%; border-bottom: 2px solid #64748b; display: flex;">
+                        <div style="width: 50%; height: 100%; background: #f3e8ff; border-right: 1px dashed #cbd5e1; display: flex; align-items: center; justify-content: center;"><span style="font-size: 10px; font-weight: bold; color: #581c87;">PK 16x16</span></div>
+                        <div style="width: 50%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 10px; color: #94a3b8; font-style: italic;">复用</div>
+                    </div>
+                    <!-- 下 32x16 -->
+                    <div style="width: 100%; height: 50%; display: flex;">
+                        <div style="width: 50%; height: 100%; background: #f3e8ff; border-right: 1px dashed #cbd5e1; display: flex; align-items: center; justify-content: center;"><span style="font-size: 10px; font-weight: bold; color: #581c87;">PK 16x16</span></div>
+                        <div style="width: 50%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 10px; color: #94a3b8; font-style: italic;">复用</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div style="display: flex; flex-direction: column; align-items: center;">
+                <div style="font-weight: 600; color: #334155; margin-bottom: 15px;">二叉树垂直 (BT VER)</div>
+                <div style="position: relative; width: 120px; height: 120px; background: #f8fafc; border: 2px solid #64748b; border-radius: 8px; display: flex; overflow: hidden;">
+                    <!-- 左 16x32 -->
+                    <div style="width: 50%; height: 100%; border-right: 2px solid #64748b; display: flex; flex-direction: column;">
+                        <div style="width: 100%; height: 50%; background: #f3e8ff; border-bottom: 1px dashed #cbd5e1; display: flex; align-items: center; justify-content: center;"><span style="font-size: 10px; font-weight: bold; color: #581c87;">PK 16x16</span></div>
+                        <div style="width: 100%; height: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; color: #94a3b8; font-style: italic;">复用</div>
+                    </div>
+                    <!-- 右 16x32 -->
+                    <div style="width: 50%; height: 100%; display: flex; flex-direction: column;">
+                        <div style="width: 100%; height: 50%; background: #f3e8ff; border-bottom: 1px dashed #cbd5e1; display: flex; align-items: center; justify-content: center;"><span style="font-size: 10px; font-weight: bold; color: #581c87;">PK 16x16</span></div>
+                        <div style="width: 100%; height: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; color: #94a3b8; font-style: italic;">复用</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 3. TT HOR & VER 色度 -->
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 30px;">
+            <div style="display: flex; flex-direction: column; align-items: center;">
+                <div style="font-weight: 600; color: #334155; margin-bottom: 15px;">三叉树水平 (TT HOR)</div>
+                <div style="position: relative; width: 120px; height: 120px; background: #f8fafc; border: 2px solid #64748b; border-radius: 8px; display: flex; flex-direction: column; overflow: hidden;">
+                    <!-- 上 32x8 -->
+                    <div style="width: 100%; height: 25%; border-bottom: 2px solid #64748b; display: flex;">
+                        <div style="width: 50%; height: 100%; background: #f3e8ff; border-right: 1px dashed #cbd5e1; display: flex; align-items: center; justify-content: center;"><span style="font-size: 8px; font-weight: bold; color: #581c87;">PK 16x8</span></div>
+                        <div style="width: 50%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 8px; color: #94a3b8; font-style: italic;">复用</div>
+                    </div>
+                    <!-- 中 32x16 -->
+                    <div style="width: 100%; height: 50%; border-bottom: 2px solid #64748b; display: flex;">
+                        <div style="width: 50%; height: 100%; background: #f3e8ff; border-right: 1px dashed #cbd5e1; display: flex; align-items: center; justify-content: center;"><span style="font-size: 10px; font-weight: bold; color: #581c87;">PK 16x16</span></div>
+                        <div style="width: 50%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 10px; color: #94a3b8; font-style: italic;">复用</div>
+                    </div>
+                    <!-- 下 32x8 -->
+                    <div style="width: 100%; height: 25%; display: flex;">
+                        <div style="width: 50%; height: 100%; background: #f3e8ff; border-right: 1px dashed #cbd5e1; display: flex; align-items: center; justify-content: center;"><span style="font-size: 8px; font-weight: bold; color: #581c87;">PK 16x8</span></div>
+                        <div style="width: 50%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 8px; color: #94a3b8; font-style: italic;">复用</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div style="display: flex; flex-direction: column; align-items: center;">
+                <div style="font-weight: 600; color: #334155; margin-bottom: 15px;">三叉树垂直 (TT VER)</div>
+                <div style="position: relative; width: 120px; height: 120px; background: #f8fafc; border: 2px solid #64748b; border-radius: 8px; display: flex; overflow: hidden;">
+                    <!-- 左 8x32 -->
+                    <div style="width: 25%; height: 100%; border-right: 2px solid #64748b; display: flex; flex-direction: column;">
+                        <div style="width: 100%; height: 50%; background: #f3e8ff; border-bottom: 1px dashed #cbd5e1; display: flex; align-items: center; justify-content: center; text-align: center;"><span style="font-size: 8px; font-weight: bold; color: #581c87; line-height: 1;">PK<br>8x16</span></div>
+                        <div style="width: 100%; height: 50%; display: flex; align-items: center; justify-content: center; font-size: 8px; color: #94a3b8; font-style: italic;">复用</div>
+                    </div>
+                    <!-- 中 16x32 -->
+                    <div style="width: 50%; height: 100%; border-right: 2px solid #64748b; display: flex; flex-direction: column;">
+                        <div style="width: 100%; height: 50%; background: #f3e8ff; border-bottom: 1px dashed #cbd5e1; display: flex; align-items: center; justify-content: center;"><span style="font-size: 10px; font-weight: bold; color: #581c87;">PK 16x16</span></div>
+                        <div style="width: 100%; height: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; color: #94a3b8; font-style: italic;">复用</div>
+                    </div>
+                    <!-- 右 8x32 -->
+                    <div style="width: 25%; height: 100%; display: flex; flex-direction: column;">
+                        <div style="width: 100%; height: 50%; background: #f3e8ff; border-bottom: 1px dashed #cbd5e1; display: flex; align-items: center; justify-content: center; text-align: center;"><span style="font-size: 8px; font-weight: bold; color: #581c87; line-height: 1;">PK<br>8x16</span></div>
+                        <div style="width: 100%; height: 50%; display: flex; align-items: center; justify-content: center; font-size: 8px; color: #94a3b8; font-style: italic;">复用</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
 </div>
 
 <script>
